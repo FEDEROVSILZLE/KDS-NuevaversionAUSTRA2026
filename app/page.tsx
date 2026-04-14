@@ -1,65 +1,202 @@
-import Image from "next/image";
+'use client'
+import { signIn, useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+
+const SECTORES_INTERNOS = [
+  { code: 'COCINA',      name: 'Cocina',      icon: '🍳', ruta: '/cocina' },
+  { code: 'FABRICA',     name: 'Fábrica',     icon: '⚙️', ruta: '/fabrica' },
+  { code: 'ARMADO',      name: 'Armado',      icon: '📦', ruta: '/armado' },
+  { code: 'DEPOSITO',    name: 'Depósito',    icon: '🏭', ruta: '/deposito' },
+  { code: 'FRACCIONADO', name: 'Fraccionado', icon: '✂️', ruta: '/fraccionado' },
+  { code: 'REMITOS',     name: 'Remitos',     icon: '🧾', ruta: '/remitos' },
+  { code: 'ADMIN',       name: 'Admin',       icon: '⚡', ruta: '/admin' },
+]
+
+const SUCURSALES = [
+  { code: 'LMA', name: 'La Loma' },
+  { code: 'RDT', name: 'Rada Tilly' },
+  { code: 'KND', name: 'Kennedy' },
+  { code: 'POL', name: 'Polonia' },
+  { code: 'KM3', name: 'Km 3' },
+  { code: 'KM8', name: 'Km 8' },
+  { code: 'CLO', name: 'Caleta Olivia' },
+]
 
 export default function Home() {
+  const [selected, setSelected] = useState(null)       // sector interno seleccionado
+  const [sucSelected, setSucSelected] = useState(null) // sucursal seleccionada
+  const [showSucursales, setShowSucursales] = useState(false)
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const router = useRouter()
+
+  const handleLogin = async (e) => {
+    e.preventDefault()
+    const loginTarget = showSucursales ? sucSelected : selected
+    if (!loginTarget) return
+    setLoading(true)
+    setError('')
+
+    const res = await signIn('credentials', {
+      sector_code: loginTarget.code,
+      password,
+      redirect: false,
+    })
+
+    setLoading(false)
+
+    if (res?.ok) {
+      router.push('/sucursales')
+    } else {
+      setError('Clave incorrecta. Intentá de nuevo.')
+      setPassword('')
+    }
+  }
+
+  const handleSectorClick = (s) => {
+    if (s.code === 'SUCURSALES') {
+      setShowSucursales(true)
+      setSelected(null)
+      setSucSelected(null)
+      setError('')
+      setPassword('')
+    } else {
+      setShowSucursales(false)
+      setSelected(s)
+      setSucSelected(null)
+      setError('')
+      setPassword('')
+    }
+  }
+
+  const handleSucursalClick = (suc) => {
+    setSucSelected(suc)
+    setError('')
+    setPassword('')
+  }
+
+  const handleBack = () => {
+    setShowSucursales(false)
+    setSucSelected(null)
+    setSelected(null)
+    setPassword('')
+    setError('')
+  }
+
+  const loginTarget = showSucursales ? sucSelected : selected
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div style={{
+      minHeight: '100vh', background: '#0f1c2e',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      fontFamily: 'system-ui, sans-serif', padding: '2rem'
+    }}>
+      <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
+        <h1 style={{ color: 'white', fontSize: '2rem', fontWeight: '700', letterSpacing: '.06em', margin: 0 }}>
+          AUSTRA <span style={{ color: '#2196f3' }}>KDS</span>
+        </h1>
+        <p style={{ color: '#8899aa', fontSize: '.875rem', margin: '.5rem 0 0' }}>
+          {showSucursales ? 'Seleccioná tu sucursal' : 'Seleccioná tu sector para ingresar'}
+        </p>
+      </div>
+
+      {/* ── PANTALLA PRINCIPAL: sectores internos + botón sucursales ── */}
+      {!showSucursales && (
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: '12px', width: '100%', maxWidth: '640px', marginBottom: '1.5rem'
+        }}>
+          {SECTORES_INTERNOS.map(s => (
+            <button key={s.code} onClick={() => handleSectorClick(s)}
+              style={{
+                background: selected?.code === s.code ? '#1d2f47' : '#162236',
+                border: selected?.code === s.code ? '2px solid #2196f3' : '1px solid #243550',
+                borderRadius: '8px', padding: '1rem .75rem', cursor: 'pointer',
+                textAlign: 'center', transition: 'all .15s'
+              }}>
+              <div style={{ fontSize: '1.5rem', marginBottom: '6px' }}>{s.icon}</div>
+              <div style={{ color: selected?.code === s.code ? 'white' : '#7a9bb8', fontSize: '11px', fontWeight: '600', letterSpacing: '.04em' }}>
+                {s.name}
+              </div>
+            </button>
+          ))}
+
+          {/* Botón especial Sucursales */}
+          <button onClick={() => handleSectorClick({ code: 'SUCURSALES' })}
+            style={{
+              background: '#162236', border: '1px solid #243550',
+              borderRadius: '8px', padding: '1rem .75rem', cursor: 'pointer',
+              textAlign: 'center', transition: 'all .15s'
+            }}>
+            <div style={{ fontSize: '1.5rem', marginBottom: '6px' }}>🏪</div>
+            <div style={{ color: '#7a9bb8', fontSize: '11px', fontWeight: '600', letterSpacing: '.04em' }}>
+              Sucursales
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* ── PANTALLA SUCURSALES: elegir cuál ── */}
+      {showSucursales && (
+        <div style={{ width: '100%', maxWidth: '640px', marginBottom: '1.5rem' }}>
+          <button onClick={handleBack}
+            style={{ background: 'none', border: 'none', color: '#4a7fa5', fontSize: '12px', cursor: 'pointer', marginBottom: '1rem', padding: 0 }}>
+            ← Volver
+          </button>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+            {SUCURSALES.map(suc => (
+              <button key={suc.code} onClick={() => handleSucursalClick(suc)}
+                style={{
+                  background: sucSelected?.code === suc.code ? '#1d2f47' : '#162236',
+                  border: sucSelected?.code === suc.code ? '2px solid #2196f3' : '1px solid #243550',
+                  borderRadius: '8px', padding: '1rem .75rem', cursor: 'pointer',
+                  textAlign: 'center', transition: 'all .15s'
+                }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '6px' }}>🏪</div>
+                <div style={{ color: sucSelected?.code === suc.code ? 'white' : '#7a9bb8', fontSize: '11px', fontWeight: '600', letterSpacing: '.04em' }}>
+                  {suc.name}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── FORMULARIO DE PIN ── */}
+      {loginTarget && (
+        <form onSubmit={handleLogin} style={{
+          background: '#162236', border: '1px solid #243550',
+          borderRadius: '10px', padding: '1.5rem', width: '100%', maxWidth: '320px'
+        }}>
+          <p style={{ color: '#8899aa', fontSize: '12px', margin: '0 0 .75rem', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+            Ingresá como <span style={{ color: 'white', fontWeight: '600' }}>{loginTarget.name}</span>
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+          <input
+            type="password" value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="••••••" autoFocus
+            style={{
+              width: '100%', background: '#0f1c2e', border: '1px solid #243550',
+              borderRadius: '5px', padding: '10px 12px', color: 'white',
+              fontSize: '16px', letterSpacing: '.2em', outline: 'none',
+              boxSizing: 'border-box', marginBottom: '.75rem'
+            }}
+          />
+          {error && <p style={{ color: '#ef4444', fontSize: '12px', margin: '0 0 .75rem' }}>{error}</p>}
+          <button type="submit" disabled={loading || !password}
+            style={{
+              width: '100%', background: loading ? '#243550' : '#2196f3',
+              border: 'none', borderRadius: '5px', padding: '10px',
+              color: 'white', fontSize: '13px', fontWeight: '700',
+              cursor: loading ? 'not-allowed' : 'pointer', letterSpacing: '.04em'
+            }}>
+            {loading ? 'Ingresando...' : 'Ingresar →'}
+          </button>
+        </form>
+      )}
     </div>
-  );
+  )
 }

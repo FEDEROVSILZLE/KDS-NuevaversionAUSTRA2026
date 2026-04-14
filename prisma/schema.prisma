@@ -1,0 +1,542 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["audit", "core", "operations", "public", "staging"]
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model order_lifecycle {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entity_type     String        @db.VarChar(50)
+  entity_id       String        @db.Uuid
+  previous_status order_status?
+  new_status      order_status
+  changed_by      String?       @db.VarChar(100)
+  changed_at      DateTime?     @default(now()) @db.Timestamptz(6)
+  notes           String?
+  metadata        Json?         @default("{}")
+
+  @@index([changed_at(sort: Desc)], map: "idx_lifecycle_changed_at")
+  @@index([changed_at(sort: Desc)], map: "idx_lifecycle_date")
+  @@index([entity_type, entity_id], map: "idx_lifecycle_entity")
+  @@index([new_status], map: "idx_lifecycle_status")
+  @@schema("audit")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model products {
+  id                     String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  official_name          String               @db.VarChar(200)
+  base_unit              String               @db.VarChar(20)
+  condition              String?              @db.VarChar(50)
+  sub_condition          String?              @db.VarChar(50)
+  is_for_branches        Boolean?             @default(false)
+  is_produced_in_kitchen Boolean?             @default(false)
+  is_produced_in_fabrica Boolean?             @default(false)
+  is_produced_in_armado  Boolean?             @default(false)
+  is_fractionable        Boolean?             @default(false)
+  description            String?
+  internal_code          String?              @db.VarChar(50)
+  codigo_tango           Decimal?             @db.Decimal
+  is_active              Boolean?             @default(true)
+  created_at             DateTime?            @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime?            @default(now()) @db.Timestamptz(6)
+  recipe_ingredients     recipe_ingredients[]
+  recipes                recipes?
+  supply_rules           supply_rules[]
+  branch_order_items     branch_order_items[]
+  order_items            order_items[]
+  shipment_items         shipment_items[]
+  stock                  stock[]
+  stock_movements        stock_movements[]
+
+  @@schema("core")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model recipe_ingredients {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipe_id             String    @db.Uuid
+  ingredient_product_id String    @db.Uuid
+  quantity              Decimal   @db.Decimal(10, 3)
+  unit                  String    @db.VarChar(20)
+  sort_order            Int?      @default(0)
+  is_optional           Boolean?  @default(false)
+  notes                 String?
+  created_at            DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime? @default(now()) @db.Timestamptz(6)
+  products              products  @relation(fields: [ingredient_product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  recipes               recipes   @relation(fields: [recipe_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([recipe_id, ingredient_product_id])
+  @@index([ingredient_product_id], map: "idx_recipe_ingredients_product")
+  @@index([recipe_id], map: "idx_recipe_ingredients_recipe")
+  @@schema("core")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model recipes {
+  id                       String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  product_id               String               @unique @db.Uuid
+  production_sector_id     Int
+  yield_quantity           Decimal              @db.Decimal(10, 3)
+  yield_unit               String               @db.VarChar(20)
+  version                  Int?                 @default(1)
+  preparation_time_minutes Int?
+  cooking_time_minutes     Int?
+  instructions             String?
+  notes                    String?
+  is_active                Boolean?             @default(true)
+  created_by               String?              @db.VarChar(100)
+  created_at               DateTime?            @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime?            @default(now()) @db.Timestamptz(6)
+  total_time_minutes       Int?                 @default(dbgenerated("(COALESCE(preparation_time_minutes, 0) + COALESCE(cooking_time_minutes, 0))"))
+  recipe_ingredients       recipe_ingredients[]
+  products                 products             @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sectors                  sectors              @relation(fields: [production_sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([product_id], map: "idx_recipes_product")
+  @@index([production_sector_id], map: "idx_recipes_sector")
+  @@schema("core")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model sectors {
+  id                                                      Int                  @id @default(autoincrement())
+  code                                                    String               @unique @db.VarChar(20)
+  name                                                    String               @db.VarChar(100)
+  type                                                    sector_type
+  config                                                  Json?                @default("{}")
+  is_active                                               Boolean?             @default(true)
+  description                                             String?
+  created_at                                              DateTime?            @default(now()) @db.Timestamptz(6)
+  updated_at                                              DateTime?            @default(now()) @db.Timestamptz(6)
+  recipes                                                 recipes[]
+  supply_rules_supply_rules_consumer_sector_idTosectors   supply_rules[]       @relation("supply_rules_consumer_sector_idTosectors")
+  supply_rules_supply_rules_supplier_sector_idTosectors   supply_rules[]       @relation("supply_rules_supplier_sector_idTosectors")
+  supply_rules_supply_rules_visibility_sector_idTosectors supply_rules[]       @relation("supply_rules_visibility_sector_idTosectors")
+  branch_order_items                                      branch_order_items[]
+  orders_orders_from_sector_idTosectors                   orders[]             @relation("orders_from_sector_idTosectors")
+  orders_orders_to_sector_idTosectors                     orders[]             @relation("orders_to_sector_idTosectors")
+  shipments                                               shipments[]
+  stock                                                   stock[]
+  stock_movements                                         stock_movements[]
+
+  @@index([type], map: "idx_sectors_type")
+  @@schema("core")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model supply_rules {
+  id                                                 Int       @id @default(autoincrement())
+  product_id                                         String    @db.Uuid
+  supplier_sector_id                                 Int
+  consumer_sector_id                                 Int?
+  visibility_sector_id                               Int?
+  is_default                                         Boolean?  @default(true)
+  priority                                           Int?      @default(1)
+  lead_time_hours                                    Int?
+  notes                                              String?
+  is_active                                          Boolean?  @default(true)
+  created_at                                         DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at                                         DateTime? @default(now()) @db.Timestamptz(6)
+  sectors_supply_rules_consumer_sector_idTosectors   sectors?  @relation("supply_rules_consumer_sector_idTosectors", fields: [consumer_sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  products                                           products  @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sectors_supply_rules_supplier_sector_idTosectors   sectors   @relation("supply_rules_supplier_sector_idTosectors", fields: [supplier_sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sectors_supply_rules_visibility_sector_idTosectors sectors?  @relation("supply_rules_visibility_sector_idTosectors", fields: [visibility_sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([consumer_sector_id], map: "idx_supply_rules_consumer")
+  @@index([product_id], map: "idx_supply_rules_product")
+  @@index([supplier_sector_id], map: "idx_supply_rules_supplier")
+  @@index([visibility_sector_id], map: "idx_supply_rules_visibility")
+  @@schema("core")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model branch_order_items {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branch_order_id    String           @db.Uuid
+  product_id         String           @db.Uuid
+  requested_quantity Decimal          @db.Decimal(10, 3)
+  confirmed_quantity Decimal?         @db.Decimal(10, 3)
+  unit               String           @db.VarChar(20)
+  assigned_sector_id Int?
+  item_status        order_status?    @default(PENDING_CONFIRMATION)
+  confirmed_at       DateTime?        @db.Timestamptz(6)
+  confirmed_by       String?          @db.VarChar(100)
+  item_notes         String?
+  created_at         DateTime?        @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime?        @default(now()) @db.Timestamptz(6)
+  sectors            sectors?         @relation(fields: [assigned_sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branch_orders      branch_orders    @relation(fields: [branch_order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  products           products         @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipment_items     shipment_items[]
+
+  @@unique([branch_order_id, product_id])
+  @@index([branch_order_id], map: "idx_branch_order_items_order")
+  @@index([product_id], map: "idx_branch_order_items_product")
+  @@index([assigned_sector_id], map: "idx_branch_order_items_sector")
+  @@index([item_status], map: "idx_branch_order_items_status")
+  @@schema("operations")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model branch_orders {
+  id                      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_number            String               @unique @db.VarChar(50)
+  branch_code             String               @db.VarChar(20)
+  branch_name             String?              @db.VarChar(100)
+  status                  order_status?        @default(PENDING_CONFIRMATION)
+  requested_delivery_date DateTime?            @db.Date
+  confirmed_delivery_date DateTime?            @db.Date
+  priority                Int?                 @default(5)
+  notes                   String?
+  internal_notes          String?
+  created_by              String?              @db.VarChar(100)
+  created_at              DateTime?            @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?            @default(now()) @db.Timestamptz(6)
+  is_active               Boolean?             @default(true)
+  cancelled_at            DateTime?            @db.Timestamptz(6)
+  cancellation_reason     String?
+  branch_order_items      branch_order_items[]
+  shipments               shipments[]
+
+  @@index([branch_code], map: "idx_branch_orders_branch")
+  @@index([created_at(sort: Desc)], map: "idx_branch_orders_created_desc")
+  @@index([requested_delivery_date], map: "idx_branch_orders_date")
+  @@index([order_number], map: "idx_branch_orders_number")
+  @@index([status], map: "idx_branch_orders_status")
+  @@schema("operations")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model order_items {
+  id                      String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id                String        @db.Uuid
+  product_id              String        @db.Uuid
+  requested_quantity      Decimal       @db.Decimal(10, 3)
+  confirmed_quantity      Decimal?      @db.Decimal(10, 3)
+  produced_quantity       Decimal?      @db.Decimal(10, 3)
+  unit                    String        @db.VarChar(20)
+  item_status             order_status? @default(PENDING_CONFIRMATION)
+  production_started_at   DateTime?     @db.Timestamptz(6)
+  production_completed_at DateTime?     @db.Timestamptz(6)
+  confirmed_by            String?       @db.VarChar(100)
+  confirmed_at            DateTime?     @db.Timestamptz(6)
+  item_notes              String?
+  created_at              DateTime?     @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?     @default(now()) @db.Timestamptz(6)
+  orders                  orders        @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  products                products      @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([order_id, product_id])
+  @@index([order_id], map: "idx_order_items_order")
+  @@index([product_id], map: "idx_order_items_product")
+  @@index([item_status], map: "idx_order_items_status")
+  @@schema("operations")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model orders {
+  id                                     String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_number                           String        @unique @db.VarChar(50)
+  order_type                             order_type
+  from_sector_id                         Int
+  to_sector_id                           Int
+  status                                 order_status? @default(PENDING_CONFIRMATION)
+  requested_delivery_date                DateTime?     @db.Date
+  started_at                             DateTime?     @db.Timestamptz(6)
+  completed_at                           DateTime?     @db.Timestamptz(6)
+  priority                               Int?          @default(5)
+  notes                                  String?
+  production_notes                       String?
+  created_by                             String?       @db.VarChar(100)
+  created_at                             DateTime?     @default(now()) @db.Timestamptz(6)
+  updated_at                             DateTime?     @default(now()) @db.Timestamptz(6)
+  is_active                              Boolean?      @default(true)
+  cancelled_at                           DateTime?     @db.Timestamptz(6)
+  cancellation_reason                    String?
+  order_items                            order_items[]
+  sectors_orders_from_sector_idTosectors sectors       @relation("orders_from_sector_idTosectors", fields: [from_sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sectors_orders_to_sector_idTosectors   sectors       @relation("orders_to_sector_idTosectors", fields: [to_sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([from_sector_id], map: "idx_orders_from_sector")
+  @@index([order_number], map: "idx_orders_number")
+  @@index([status], map: "idx_orders_status")
+  @@index([to_sector_id], map: "idx_orders_to_sector")
+  @@index([order_type], map: "idx_orders_type")
+  @@schema("operations")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model shipment_items {
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipment_id          String              @db.Uuid
+  branch_order_item_id String?             @db.Uuid
+  product_id           String?             @db.Uuid
+  quantity_shipped     Decimal             @db.Decimal(10, 3)
+  quantity_received    Decimal?            @db.Decimal(10, 3)
+  unit                 String              @db.VarChar(20)
+  damaged_quantity     Decimal?            @default(0) @db.Decimal(10, 3)
+  notes                String?
+  created_at           DateTime?           @default(now()) @db.Timestamptz(6)
+  branch_order_items   branch_order_items? @relation(fields: [branch_order_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  products             products?           @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shipments            shipments           @relation(fields: [shipment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([product_id], map: "idx_shipment_items_product")
+  @@index([shipment_id], map: "idx_shipment_items_shipment")
+  @@schema("operations")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model shipments {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shipment_number String           @unique @db.VarChar(50)
+  shipment_type   shipment_type
+  branch_order_id String?          @db.Uuid
+  branch_code     String?          @db.VarChar(20)
+  from_sector_id  Int?
+  status          shipment_status? @default(DRAFT)
+  dispatched_at   DateTime?        @db.Timestamptz(6)
+  delivered_at    DateTime?        @db.Timestamptz(6)
+  driver_name     String?          @db.VarChar(100)
+  vehicle_plate   String?          @db.VarChar(20)
+  notes           String?
+  created_by      String?          @db.VarChar(100)
+  created_at      DateTime?        @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime?        @default(now()) @db.Timestamptz(6)
+  shipment_items  shipment_items[]
+  branch_orders   branch_orders?   @relation(fields: [branch_order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sectors         sectors?         @relation(fields: [from_sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([branch_code], map: "idx_shipments_branch")
+  @@index([shipment_number], map: "idx_shipments_number")
+  @@index([branch_order_id], map: "idx_shipments_order")
+  @@index([status], map: "idx_shipments_status")
+  @@index([shipment_type], map: "idx_shipments_type")
+  @@schema("operations")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model stock {
+  sector_id          Int
+  product_id         String    @db.Uuid
+  quantity           Decimal   @default(0) @db.Decimal(10, 3)
+  unit               String    @db.VarChar(20)
+  min_stock          Decimal?  @db.Decimal(10, 3)
+  max_stock          Decimal?  @db.Decimal(10, 3)
+  reorder_point      Decimal?  @db.Decimal(10, 3)
+  last_updated       DateTime? @default(now()) @db.Timestamptz(6)
+  last_movement_type String?   @db.VarChar(50)
+  notes              String?
+  created_at         DateTime? @default(now()) @db.Timestamptz(6)
+  products           products  @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sectors            sectors   @relation(fields: [sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([sector_id, product_id])
+  @@index([product_id], map: "idx_stock_product")
+  @@index([sector_id], map: "idx_stock_sector")
+  @@index([last_updated(sort: Desc)], map: "idx_stock_updated")
+  @@schema("operations")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model stock_movements {
+  id             String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  sector_id      Int
+  product_id     String        @db.Uuid
+  movement_type  movement_type
+  quantity       Decimal       @db.Decimal(10, 3)
+  unit           String        @db.VarChar(20)
+  stock_before   Decimal?      @db.Decimal(10, 3)
+  stock_after    Decimal?      @db.Decimal(10, 3)
+  reference_id   String?       @db.Uuid
+  reference_type String?       @db.VarChar(50)
+  created_by     String?       @db.VarChar(100)
+  created_at     DateTime?     @default(now()) @db.Timestamptz(6)
+  notes          String?
+  products       products      @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sectors        sectors       @relation(fields: [sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([created_at(sort: Desc)], map: "idx_stock_movements_date")
+  @@index([reference_type, reference_id], map: "idx_stock_movements_reference")
+  @@index([sector_id, product_id], map: "idx_stock_movements_sector_product")
+  @@index([movement_type], map: "idx_stock_movements_type")
+  @@schema("operations")
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model productos_maestro {
+  uuid                   String?  @db.Uuid
+  id_original            Int?
+  codigo_tango           Decimal? @db.Decimal
+  nombre_oficial         String?
+  unidad_base            String?
+  condicion              String?
+  sub_condicion          String?
+  es_para_sucursales     Boolean?
+  quien_lo_tiene         String?
+  quien_lo_usa           String?
+  quien_ve_el_pedido     String?
+  es_producido_en_cocina Boolean?
+  es_de_fabrica          Boolean?
+  es_de_armado           Boolean?
+  es_fraccionable        Boolean?
+
+  @@ignore
+  @@schema("staging")
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model productos_maestro_limpio {
+  uuid                   String?  @db.Uuid
+  nombre_oficial         String?
+  unidad_base            String?
+  condicion              String?
+  sub_condicion          String?
+  es_para_sucursales     Boolean?
+  quien_lo_tiene         String?
+  quien_lo_usa           String?
+  quien_ve_el_pedido     String?
+  es_producido_en_cocina Boolean?
+  es_de_fabrica          Boolean?
+  es_de_armado           Boolean?
+  es_fraccionable        Boolean?
+  codigo_tango           Decimal? @db.Decimal
+
+  @@ignore
+  @@schema("staging")
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model temp_articulos {
+  id                 Int?
+  nombre_oficial     String?
+  condicion          String?
+  sub_condicion      String?
+  quien_lo_tiene     String?
+  quien_lo_usa       String?
+  quien_ve_el_pedido String?
+
+  @@ignore
+  @@schema("staging")
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model temp_listado_firebase {
+  id                 Int?
+  codigo_tango       Decimal? @db.Decimal
+  nombre_oficial     String?
+  unidad_base        String?
+  condicion          String?
+  sub_condicion      String?
+  es_para_sucursales Boolean?
+
+  @@ignore
+  @@schema("staging")
+}
+
+enum sector_type {
+  PRODUCTION
+  WAREHOUSE
+  DISPATCH
+  ADMIN
+
+  @@schema("core")
+}
+
+enum movement_type {
+  PRODUCCION
+  CONSUMO
+  DESPACHO
+  RECEPCION
+  AJUSTE
+  TRANSFERENCIA
+  MERMA
+  FRACCIONAMIENTO_ENTRADA
+  FRACCIONAMIENTO_SALIDA
+
+  @@schema("operations")
+}
+
+enum order_status {
+  DRAFT
+  PENDING_CONFIRMATION
+  CONFIRMED_PARTIAL
+  IN_PRODUCTION
+  READY_FOR_PICKUP
+  DISPATCHED
+  DELIVERED
+  CANCELLED
+
+  @@schema("operations")
+}
+
+enum order_type {
+  BRANCH_ORDER
+  PRODUCTION_ORDER
+  FRACTIONATION_ORDER
+  REPLENISHMENT
+  INTERNAL_TRANSFER
+
+  @@schema("operations")
+}
+
+enum shipment_status {
+  DRAFT
+  PRINTED
+  IN_TRANSIT
+  DELIVERED
+  RETURNED
+  CANCELLED
+
+  @@schema("operations")
+}
+
+enum shipment_type {
+  STANDARD
+  EXPRESS_PICKUP
+
+  @@schema("operations")
+}
+
+enum condicion_producto {
+  MATERIA_PRIMA @map("MATERIA PRIMA")
+  PRODUCIDO
+  REVENTA
+  INSUMO
+
+  @@schema("public")
+}
+
+enum estado_pedido {
+  PENDIENTE
+  PREPARANDO
+  LISTO
+  ENTREGADO
+  CANCELADO
+
+  @@schema("public")
+}
