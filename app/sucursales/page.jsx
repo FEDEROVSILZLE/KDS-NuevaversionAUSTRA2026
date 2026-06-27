@@ -2,50 +2,28 @@
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { initializeApp, getApps } from 'firebase/app'
-import { getFirestore, collection, getDocs, addDoc, query,
-         where, orderBy, serverTimestamp, Timestamp } from 'firebase/firestore'
 
-// ─── Firebase config (nuevo proyecto) ────────────────────────────────────────
-const firebaseConfig = {
-  apiKey:            "AIzaSyAXELkDZdV1mc8GjbudhcwwJU5F1vq8qVc",
-  authDomain:        "chacha-kds.firebaseapp.com",
-  projectId:         "chacha-kds",
-  storageBucket:     "chacha-kds.firebasestorage.app",
-  messagingSenderId: "297572315003",
-  appId:             "1:297572315003:web:212d0c16062bbeea0097de",
-}
-
-// Inicializar Firebase una sola vez
-const firebaseApp = getApps().length === 0
-  ? initializeApp(firebaseConfig)
-  : getApps()[0]
-const db = getFirestore(firebaseApp)
-
-// ─── Categorías del grid mapeadas por sub_condition ───────────────────────────
+// ─── Categorías del grid ───────────────────────────────────────────────────────
+// El campo id debe coincidir con sub_condition en core.products
 const CATEGORIAS = [
-  // Producidos
-  { id: 'horno',              label: 'Horno',          icon: '🥟' },
-  { id: 'freir',              label: 'Para Freír',      icon: '🍳' },
-  { id: 'hojaldre',           label: 'Hojaldre',        icon: '🥐' },
-  { id: 'fraccionados',       label: 'Fraccionados',    icon: '📦' },
-  { id: 'sandwiches',         label: 'Sandwiches',      icon: '🥪' },
-  { id: 'copetin',            label: 'Copetín',         icon: '🫓' },
-  { id: 'postres',            label: 'Postres',         icon: '🍮' },
-  // Fábrica — con restricción horaria
-  { id: 'fabrica',            label: 'Fábrica',         icon: '⚙️', esFabrica: true },
-  // Bebidas
-  { id: 'gaseosa',            label: 'Gaseosas',        icon: '🥤' },
-  { id: 'cerveza',            label: 'Cervezas',        icon: '🍺' },
-  { id: 'vinos',              label: 'Vinos',           icon: '🍷' },
-  { id: 'jugos',              label: 'Jugos',           icon: '🧃' },
-  { id: 'aguas',              label: 'Aguas',           icon: '💧' },
-  // Insumos
-  { id: 'envases',            label: 'Envases',         icon: '📫' },
-  { id: 'consumibles',        label: 'Consumibles',     icon: '🧴' },
-  { id: 'limpieza',           label: 'Limpieza',        icon: '🧹' },
-  { id: 'etiqueta',           label: 'Etiquetas',       icon: '🏷️' },
-  { id: 'elementos de trabajo', label: 'Elem. Trabajo', icon: '🔧' },
+  { id: 'horno',                label: 'Horno',          icon: '🥟' },
+  { id: 'freir',                label: 'Para Freír',     icon: '🍳' },
+  { id: 'hojaldre',             label: 'Hojaldre',       icon: '🥐' },
+  { id: 'fraccionados',         label: 'Fraccionados',   icon: '📦' },
+  { id: 'sandwiches',           label: 'Sandwiches',     icon: '🥪' },
+  { id: 'copetin',              label: 'Copetín',        icon: '🫓' },
+  { id: 'postres',              label: 'Postres',        icon: '🍮' },
+  { id: 'fabrica',              label: 'Fábrica',        icon: '⚙️', esFabrica: true },
+  { id: 'gaseosa',              label: 'Gaseosas',       icon: '🥤' },
+  { id: 'cerveza',              label: 'Cervezas',       icon: '🍺' },
+  { id: 'vinos',                label: 'Vinos',          icon: '🍷' },
+  { id: 'jugos',                label: 'Jugos',          icon: '🧃' },
+  { id: 'aguas',                label: 'Aguas',          icon: '💧' },
+  { id: 'envases',              label: 'Envases',        icon: '📫' },
+  { id: 'consumibles',          label: 'Consumibles',    icon: '🧴' },
+  { id: 'limpieza',             label: 'Limpieza',       icon: '🧹' },
+  { id: 'etiqueta',             label: 'Etiquetas',      icon: '🏷️' },
+  { id: 'elementos de trabajo', label: 'Elem. Trabajo',  icon: '🔧' },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -61,15 +39,7 @@ function hoyARstr() {
   }).format(new Date()).split('/').reverse().join('-')
 }
 
-function buildPedidoId(sucursal) {
-  const ahora = new Date()
-  const pad = n => String(n).padStart(2, '0')
-  const ts = `${ahora.getFullYear()}${pad(ahora.getMonth()+1)}${pad(ahora.getDate())}-${pad(ahora.getHours())}${pad(ahora.getMinutes())}${pad(ahora.getSeconds())}`
-  const rand = Math.random().toString(36).slice(2, 4).toUpperCase()
-  return `${sucursal}-${ts}-${rand}`
-}
-
-// ─── Cache local de productos (evita re-fetches) ──────────────────────────────
+// Cache local de productos para no re-fetchear categorías ya cargadas
 const cacheProductos = {}
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -90,7 +60,6 @@ export default function SucursalesPage() {
   const [toast, setToast]                 = useState(null)
   const lockRef = useRef(false)
 
-  // Redirect si no tiene sesión válida
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/')
   }, [status, router])
@@ -101,7 +70,7 @@ export default function SucursalesPage() {
     setTimeout(() => setToast(null), 3500)
   }
 
-  // ── Cargar productos de una categoría desde Firebase ─────────────────────
+  // ── Cargar productos de una categoría desde PostgreSQL ────────────────────
   const abrirCategoria = useCallback(async (cat) => {
     if (lockRef.current) return
     lockRef.current = true
@@ -127,21 +96,32 @@ export default function SucursalesPage() {
     setLoadingProd(true)
 
     try {
-      // Usar cache si ya lo cargamos
+      // Usar cache si ya lo cargamos esta sesión
       if (cacheProductos[cat.id]) {
         setProductos(cacheProductos[cat.id].map(p => ({ ...p, cantidad: 0 })))
         return
       }
 
-      const q = query(
-        collection(db, 'productos'),
-        where('sub_condition', '==', cat.id),
-        orderBy('nombre')
+      const res = await fetch(
+        `/api/sucursales/productos?sub_condition=${encodeURIComponent(cat.id)}`
       )
-      const snap = await getDocs(q)
-      const lista = snap.docs.map(d => ({ ...d.data(), firestoreId: d.id, cantidad: 0 }))
-      cacheProductos[cat.id] = lista.map(p => ({ ...p })) // guardar sin cantidad
+      if (!res.ok) throw new Error('Error al cargar productos')
+
+      const data = await res.json()
+
+      // Normalizar campos para que el resto del componente funcione igual que antes
+      const lista = data.map(p => ({
+        id:            p.id,
+        nombre:        p.official_name,
+        unidad:        p.base_unit,
+        condition:     p.condition,
+        sub_condition: p.sub_condition,
+        cantidad:      0,
+      }))
+
+      cacheProductos[cat.id] = lista.map(p => ({ ...p }))
       setProductos(lista)
+
     } catch (err) {
       console.error(err)
       mostrarToast('Error al cargar productos.', 'err')
@@ -186,68 +166,59 @@ export default function SucursalesPage() {
     )
   }
 
-  // ── Enviar pedido / retiro a Firebase ────────────────────────────────────
+  // ── Enviar pedido a PostgreSQL ────────────────────────────────────────────
   const enviar = async () => {
     if (!carrito.length) { mostrarToast('El carrito está vacío.', 'err'); return }
     const tipo = modoRetiro ? 'RETIRO' : 'PEDIDO'
     if (!confirm(`¿Confirmar envío de ${tipo}?`)) return
 
     setEnviando(true)
-    const sucursal = session.user.sector
-    const ahora    = new Date()
-    const fecha    = hoyARstr()
-    const ordenId  = buildPedidoId(sucursal) + (modoRetiro ? '-RET' : '')
 
-    // Separar items de fábrica del resto
+    // Items de fábrica van con fecha de entrega = mañana
     const fabricaItems = carrito.filter(p => p.sub_condition === 'fabrica')
     const normalItems  = carrito.filter(p => p.sub_condition !== 'fabrica')
 
     try {
-      // Pedido normal
+      // Enviar items normales
       if (normalItems.length) {
-        await addDoc(collection(db, 'pedidos'), {
-          ordenId,
-          sucursal,
-          tipo,
-          fecha_pedido: fecha,
-          creadoEn: serverTimestamp(),
-          estado: 'PENDIENTE',
-          items: normalItems.map(p => ({
-            product_id:    p.id,
-            nombre:        p.nombre,
-            sub_condition: p.sub_condition,
-            condition:     p.condition,
-            cantidad:      p.cantidad,
-            unidad:        p.unidad,
-          }))
+        const res = await fetch('/api/sucursales/pedidos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: normalItems.map(p => ({
+              product_id: p.id,
+              cantidad:   p.cantidad,
+              unidad:     p.unidad,
+            })),
+            modoRetiro,
+          }),
         })
+        if (!res.ok) throw new Error('Error al enviar pedido')
       }
 
-      // Pedido fábrica (colección separada, entrega día siguiente)
+      // Enviar items de fábrica con fecha mañana
       if (fabricaItems.length) {
         if (!esAntesDeCorte(14, 30)) {
           mostrarToast('Items de Fábrica no enviados (pasó el corte de 14:30).', 'err')
         } else {
-          const manana = new Date(ahora)
+          const manana = new Date()
           manana.setDate(manana.getDate() + 1)
           const fechaEntrega = manana.toISOString().split('T')[0]
 
-          await addDoc(collection(db, 'pedidos_fabrica'), {
-            ordenId: ordenId + '-FAB',
-            sucursal,
-            tipo: 'PEDIDO_FABRICA',
-            fecha_pedido:   fecha,
-            fecha_entrega:  fechaEntrega,
-            creadoEn:       serverTimestamp(),
-            estado:         'PENDIENTE',
-            items: fabricaItems.map(p => ({
-              product_id:    p.id,
-              nombre:        p.nombre,
-              sub_condition: p.sub_condition,
-              cantidad:      p.cantidad,
-              unidad:        p.unidad,
-            }))
+          const res = await fetch('/api/sucursales/pedidos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              items: fabricaItems.map(p => ({
+                product_id: p.id,
+                cantidad:   p.cantidad,
+                unidad:     p.unidad,
+              })),
+              modoRetiro: false,
+              fechaEntrega,
+            }),
           })
+          if (!res.ok) throw new Error('Error al enviar pedido de fábrica')
         }
       }
 
@@ -264,44 +235,16 @@ export default function SucursalesPage() {
     }
   }
 
-  // ── Ver últimos pedidos de hoy ────────────────────────────────────────────
+  // ── Ver últimos pedidos de hoy desde PostgreSQL ───────────────────────────
   const verUltimos = async () => {
     setLoadingUltimo(true)
     setModalUltimo(true)
-    const sucursal = session.user.sector
-    const fecha    = hoyARstr()
 
     try {
-      const [snapPed, snapFab] = await Promise.all([
-        getDocs(query(
-          collection(db, 'pedidos'),
-          where('sucursal', '==', sucursal),
-          where('fecha_pedido', '==', fecha)
-        )),
-        getDocs(query(
-          collection(db, 'pedidos_fabrica'),
-          where('sucursal', '==', sucursal),
-          where('fecha_pedido', '==', fecha)
-        ))
-      ])
-
-      // Agrupar por producto sumando cantidades
-      const mapa = new Map()
-      ;[...snapPed.docs, ...snapFab.docs].forEach(doc => {
-        const d = doc.data()
-        ;(d.items || []).forEach(item => {
-          const key = item.product_id
-          if (mapa.has(key)) {
-            mapa.get(key).cantidad += item.cantidad
-          } else {
-            mapa.set(key, { nombre: item.nombre, cantidad: item.cantidad, unidad: item.unidad })
-          }
-        })
-      })
-
-      setUltimoPed(
-        Array.from(mapa.values()).sort((a, b) => a.nombre.localeCompare(b.nombre))
-      )
+      const res = await fetch('/api/sucursales/pedidos')
+      if (!res.ok) throw new Error('Error al cargar pedidos')
+      const data = await res.json()
+      setUltimoPed(data)
     } catch (err) {
       console.error(err)
       mostrarToast('Error al cargar pedidos.', 'err')
@@ -330,8 +273,8 @@ export default function SucursalesPage() {
       {toast && (
         <div style={{
           ...s.toast,
-          background:   toast.tipo === 'err' ? '#7f1d1d' : '#14532d',
-          borderColor:  toast.tipo === 'err' ? '#ef4444' : '#22c55e',
+          background:  toast.tipo === 'err' ? '#7f1d1d' : '#14532d',
+          borderColor: toast.tipo === 'err' ? '#ef4444' : '#22c55e',
         }}>
           {toast.msg}
         </div>
@@ -549,7 +492,7 @@ export default function SucursalesPage() {
                   ...s.btnPrimario,
                   background: enviando ? '#1d2f47' : (modoRetiro ? '#dc2626' : '#2196f3'),
                   opacity: (enviando || !carrito.length) ? 0.6 : 1,
-                  cursor: (enviando || !carrito.length) ? 'not-allowed' : 'pointer',
+                  cursor:  (enviando || !carrito.length) ? 'not-allowed' : 'pointer',
                 }}
                 onClick={enviar}
                 disabled={enviando || !carrito.length}
@@ -564,7 +507,7 @@ export default function SucursalesPage() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════
-          MODAL: Último pedido del día
+          MODAL: Últimos pedidos del día
       ══════════════════════════════════════════════════════════════ */}
       {modalUltimo && (
         <div style={s.overlay} onClick={() => setModalUltimo(false)}>
@@ -623,133 +566,34 @@ export default function SucursalesPage() {
   )
 }
 
-// ─── Sistema de estilos ───────────────────────────────────────────────────────
+// ─── Estilos (idénticos al original) ─────────────────────────────────────────
 const s = {
-  page: {
-    minHeight: '100vh',
-    display: 'flex',
-    flexDirection: 'column',
-    fontFamily: 'system-ui, sans-serif',
-    transition: 'background .4s',
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '10px 24px',
-    borderBottom: '1px solid #1e3050',
-    background: '#0d1a2a',
-    flexShrink: 0,
-  },
-  logoBlanco: { color: 'white', fontSize: '1rem', fontWeight: '700', letterSpacing: '.06em' },
-  logoCyan:   { color: '#2196f3', fontSize: '1rem', fontWeight: '700', letterSpacing: '.06em' },
-  retiroBadge: {
-    background: '#7f1d1d', color: '#fca5a5',
-    fontSize: '10px', fontWeight: '700', letterSpacing: '.08em',
-    padding: '2px 8px', borderRadius: '4px', border: '1px solid #dc2626',
-  },
-  sucNombre: { color: '#8899aa', fontSize: '13px' },
-  btnSalir: {
-    background: 'none', border: '1px solid #243550', borderRadius: '5px',
-    color: '#8899aa', fontSize: '12px', padding: '4px 10px', cursor: 'pointer',
-  },
-  main: {
-    flex: 1,
-    padding: '1.5rem 2rem',
-    maxWidth: '960px',
-    width: '100%',
-    margin: '0 auto',
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(6, 1fr)',
-    gap: '10px',
-    marginBottom: '1.5rem',
-  },
-  catCard: {
-    border: '1px solid',
-    borderRadius: '10px',
-    padding: '1rem .5rem',
-    cursor: 'pointer',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '6px',
-    transition: 'opacity .15s, transform .1s',
-  },
-  catLabel: {
-    color: '#7a9bb8', fontSize: '10px', fontWeight: '600',
-    letterSpacing: '.04em', textAlign: 'center', lineHeight: 1.3,
-  },
-  fabricaBadge: {
-    background: '#451a03', color: '#fbbf24', fontSize: '9px',
-    padding: '1px 5px', borderRadius: '3px', border: '1px solid #92400e',
-  },
-  acciones: {
-    display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap',
-  },
-  btnPrimario: {
-    background: '#2196f3', border: 'none', borderRadius: '7px',
-    color: 'white', fontSize: '13px', fontWeight: '700',
-    padding: '10px 20px', cursor: 'pointer',
-    display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '.04em',
-  },
-  btnSecundario: {
-    background: 'none', border: '1px solid #243550', borderRadius: '7px',
-    color: '#7a9bb8', fontSize: '13px', fontWeight: '600',
-    padding: '10px 20px', cursor: 'pointer', letterSpacing: '.04em',
-  },
-  badge: {
-    background: 'white', color: '#2196f3', borderRadius: '50%',
-    width: '20px', height: '20px', fontSize: '11px', fontWeight: '700',
-    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  overlay: {
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    zIndex: 100, padding: '1rem',
-  },
-  modal: {
-    background: '#162236', border: '1px solid #243550', borderRadius: '12px',
-    width: '100%', maxWidth: '700px', maxHeight: '90vh',
-    display: 'flex', flexDirection: 'column', overflow: 'hidden',
-  },
-  modalHeader: {
-    display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-    padding: '1.25rem 1.25rem .75rem', borderBottom: '1px solid #243550',
-    flexShrink: 0,
-  },
-  modalTitulo: {
-    color: 'white', fontSize: '1rem', fontWeight: '700', margin: 0, letterSpacing: '.04em',
-  },
-  modalFooter: {
-    padding: '1rem 1.25rem', borderTop: '1px solid #243550',
-    display: 'flex', justifyContent: 'flex-end', gap: '8px', flexShrink: 0,
-  },
-  btnClose: {
-    background: 'none', border: 'none', color: '#8899aa',
-    fontSize: '18px', cursor: 'pointer', padding: '0 4px', lineHeight: 1,
-  },
-  tabla: { width: '100%', borderCollapse: 'collapse', fontSize: '13px' },
-  th: {
-    background: '#0f1c2e', color: '#4a7fa5', padding: '8px 12px',
-    textAlign: 'left', fontSize: '11px', fontWeight: '700',
-    letterSpacing: '.06em', textTransform: 'uppercase',
-    borderBottom: '1px solid #243550', position: 'sticky', top: 0,
-  },
-  td: { color: '#c8d8e8', padding: '8px 12px', borderBottom: '1px solid #1a2a3a' },
-  inputCantidad: {
-    background: '#0f1c2e', border: '1px solid #243550', borderRadius: '5px',
-    color: 'white', fontSize: '15px', fontWeight: '600',
-    padding: '5px 8px', width: '75px', textAlign: 'center', outline: 'none',
-  },
-  btnEliminar: {
-    background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px',
-  },
-  toast: {
-    position: 'fixed', bottom: '24px', right: '24px',
-    border: '1px solid', borderRadius: '8px', color: 'white',
-    fontSize: '13px', fontWeight: '600', padding: '12px 20px',
-    zIndex: 200, letterSpacing: '.04em', boxShadow: '0 4px 20px rgba(0,0,0,.4)',
-  },
+  page:        { minHeight: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, sans-serif', transition: 'background .4s' },
+  header:      { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 24px', borderBottom: '1px solid #1e3050', background: '#0d1a2a', flexShrink: 0 },
+  logoBlanco:  { color: 'white', fontSize: '1rem', fontWeight: '700', letterSpacing: '.06em' },
+  logoCyan:    { color: '#2196f3', fontSize: '1rem', fontWeight: '700', letterSpacing: '.06em' },
+  retiroBadge: { background: '#7f1d1d', color: '#fca5a5', fontSize: '10px', fontWeight: '700', letterSpacing: '.08em', padding: '2px 8px', borderRadius: '4px', border: '1px solid #dc2626' },
+  sucNombre:   { color: '#8899aa', fontSize: '13px' },
+  btnSalir:    { background: 'none', border: '1px solid #243550', borderRadius: '5px', color: '#8899aa', fontSize: '12px', padding: '4px 10px', cursor: 'pointer' },
+  main:        { flex: 1, padding: '1.5rem 2rem', maxWidth: '960px', width: '100%', margin: '0 auto' },
+  grid:        { display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginBottom: '1.5rem' },
+  catCard:     { border: '1px solid', borderRadius: '10px', padding: '1rem .5rem', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', transition: 'opacity .15s, transform .1s' },
+  catLabel:    { color: '#7a9bb8', fontSize: '10px', fontWeight: '600', letterSpacing: '.04em', textAlign: 'center', lineHeight: 1.3 },
+  fabricaBadge:{ background: '#451a03', color: '#fbbf24', fontSize: '9px', padding: '1px 5px', borderRadius: '3px', border: '1px solid #92400e' },
+  acciones:    { display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' },
+  btnPrimario: { background: '#2196f3', border: 'none', borderRadius: '7px', color: 'white', fontSize: '13px', fontWeight: '700', padding: '10px 20px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', letterSpacing: '.04em' },
+  btnSecundario:{ background: 'none', border: '1px solid #243550', borderRadius: '7px', color: '#7a9bb8', fontSize: '13px', fontWeight: '600', padding: '10px 20px', cursor: 'pointer', letterSpacing: '.04em' },
+  badge:       { background: 'white', color: '#2196f3', borderRadius: '50%', width: '20px', height: '20px', fontSize: '11px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  overlay:     { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' },
+  modal:       { background: '#162236', border: '1px solid #243550', borderRadius: '12px', width: '100%', maxWidth: '700px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
+  modalHeader: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '1.25rem 1.25rem .75rem', borderBottom: '1px solid #243550', flexShrink: 0 },
+  modalTitulo: { color: 'white', fontSize: '1rem', fontWeight: '700', margin: 0, letterSpacing: '.04em' },
+  modalFooter: { padding: '1rem 1.25rem', borderTop: '1px solid #243550', display: 'flex', justifyContent: 'flex-end', gap: '8px', flexShrink: 0 },
+  btnClose:    { background: 'none', border: 'none', color: '#8899aa', fontSize: '18px', cursor: 'pointer', padding: '0 4px', lineHeight: 1 },
+  tabla:       { width: '100%', borderCollapse: 'collapse', fontSize: '13px' },
+  th:          { background: '#0f1c2e', color: '#4a7fa5', padding: '8px 12px', textAlign: 'left', fontSize: '11px', fontWeight: '700', letterSpacing: '.06em', textTransform: 'uppercase', borderBottom: '1px solid #243550', position: 'sticky', top: 0 },
+  td:          { color: '#c8d8e8', padding: '8px 12px', borderBottom: '1px solid #1a2a3a' },
+  inputCantidad:{ background: '#0f1c2e', border: '1px solid #243550', borderRadius: '5px', color: 'white', fontSize: '15px', fontWeight: '600', padding: '5px 8px', width: '75px', textAlign: 'center', outline: 'none' },
+  btnEliminar: { background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px' },
+  toast:       { position: 'fixed', bottom: '24px', right: '24px', border: '1px solid', borderRadius: '8px', color: 'white', fontSize: '13px', fontWeight: '600', padding: '12px 20px', zIndex: 200, letterSpacing: '.04em' },
 }

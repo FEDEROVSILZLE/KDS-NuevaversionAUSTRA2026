@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
@@ -51,9 +52,13 @@ model products {
   recipes                recipes?
   supply_rules           supply_rules[]
   branch_order_items     branch_order_items[]
+  branch_stock           branch_stock[]
   order_items            order_items[]
   shipment_items         shipment_items[]
   stock                  stock[]
+  stock_count            stock_count[]
+  stock_count_config     stock_count_config[]
+  stock_lots             stock_lots[]
   stock_movements        stock_movements[]
 
   @@schema("core")
@@ -129,6 +134,9 @@ model sectors {
   orders_orders_to_sector_idTosectors                     orders[]             @relation("orders_to_sector_idTosectors")
   shipments                                               shipments[]
   stock                                                   stock[]
+  stock_count                                             stock_count[]
+  stock_count_config                                      stock_count_config[]
+  stock_lots                                              stock_lots[]
   stock_movements                                         stock_movements[]
 
   @@index([type], map: "idx_sectors_type")
@@ -224,6 +232,24 @@ model branch_orders {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model branch_stock {
+  branch_code      String     @db.VarChar(20)
+  product_id       String     @db.Uuid
+  quantity         Decimal    @default(0) @db.Decimal(10, 3)
+  unit             String     @db.VarChar(20)
+  last_updated     DateTime?  @default(now()) @db.Timestamptz(6)
+  last_shipment_id String?    @db.Uuid
+  shipments        shipments? @relation(fields: [last_shipment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  products         products   @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([branch_code, product_id])
+  @@index([branch_code], map: "idx_branch_stock_branch")
+  @@index([product_id], map: "idx_branch_stock_product")
+  @@schema("operations")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model order_items {
   id                      String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   order_id                String        @db.Uuid
@@ -275,6 +301,7 @@ model orders {
   order_items                            order_items[]
   sectors_orders_from_sector_idTosectors sectors       @relation("orders_from_sector_idTosectors", fields: [from_sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   sectors_orders_to_sector_idTosectors   sectors       @relation("orders_to_sector_idTosectors", fields: [to_sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  stock_lots                             stock_lots[]
 
   @@index([from_sector_id], map: "idx_orders_from_sector")
   @@index([order_number], map: "idx_orders_number")
@@ -324,6 +351,7 @@ model shipments {
   created_by      String?          @db.VarChar(100)
   created_at      DateTime?        @default(now()) @db.Timestamptz(6)
   updated_at      DateTime?        @default(now()) @db.Timestamptz(6)
+  branch_stock    branch_stock[]
   shipment_items  shipment_items[]
   branch_orders   branch_orders?   @relation(fields: [branch_order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   sectors         sectors?         @relation(fields: [from_sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -363,6 +391,65 @@ model stock {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model stock_count {
+  sector_id    Int
+  product_id   String    @db.Uuid
+  quantity     Decimal   @db.Decimal(10, 3)
+  unit         String    @db.VarChar(20)
+  last_updated DateTime? @default(now()) @db.Timestamptz(6)
+  updated_by   String?   @db.VarChar(100)
+  products     products  @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sectors      sectors   @relation(fields: [sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([sector_id, product_id])
+  @@schema("operations")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model stock_count_config {
+  id         Int      @id @default(autoincrement())
+  sector_id  Int
+  product_id String   @db.Uuid
+  sort_order Int?     @default(0)
+  unit       String   @db.VarChar(20)
+  is_active  Boolean? @default(true)
+  products   products @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sectors    sectors  @relation(fields: [sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([sector_id, product_id])
+  @@schema("operations")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model stock_lots {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sector_id         Int
+  product_id        String    @db.Uuid
+  origin_order_id   String?   @db.Uuid
+  external_ref      String?   @db.VarChar(100)
+  quantity_kg       Decimal   @db.Decimal(10, 3)
+  unit              String    @db.VarChar(20)
+  produced_at       DateTime  @default(dbgenerated("CURRENT_DATE")) @db.Date
+  expires_at        DateTime  @db.Date
+  is_bulk_remainder Boolean?  @default(false)
+  tray_number       Int?
+  is_consumed       Boolean?  @default(false)
+  consumed_at       DateTime? @db.Timestamptz(6)
+  created_by        String?   @db.VarChar(100)
+  created_at        DateTime? @default(now()) @db.Timestamptz(6)
+  notes             String?
+  orders            orders?   @relation(fields: [origin_order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  products          products  @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sectors           sectors   @relation(fields: [sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([expires_at], map: "idx_stock_lots_expires")
+  @@index([sector_id, product_id], map: "idx_stock_lots_sector_product")
+  @@schema("operations")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model stock_movements {
   id             String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   sector_id      Int
@@ -385,6 +472,17 @@ model stock_movements {
   @@index([sector_id, product_id], map: "idx_stock_movements_sector_product")
   @@index([movement_type], map: "idx_stock_movements_type")
   @@schema("operations")
+}
+
+model sector_users {
+  id            Int       @id @default(autoincrement())
+  sector_code   String    @unique @db.VarChar(20)
+  sector_name   String    @db.VarChar(100)
+  password_hash String    @db.VarChar(255)
+  is_active     Boolean?  @default(true)
+  created_at    DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@schema("public")
 }
 
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.

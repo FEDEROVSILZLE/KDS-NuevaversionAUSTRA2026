@@ -10,6 +10,7 @@ const SECTORES_INTERNOS = [
   { code: 'DEPOSITO',    name: 'Depósito',    icon: '🏭', ruta: '/deposito' },
   { code: 'FRACCIONADO', name: 'Fraccionado', icon: '✂️', ruta: '/fraccionado' },
   { code: 'REMITOS',     name: 'Remitos',     icon: '🧾', ruta: '/remitos' },
+  { code: 'STOCK',       name: 'Stock',       icon: '📊', ruta: '/stock' },
   { code: 'ADMIN',       name: 'Admin',       icon: '⚡', ruta: '/admin' },
 ]
 
@@ -24,12 +25,12 @@ const SUCURSALES = [
 ]
 
 export default function Home() {
-  const [selected, setSelected] = useState(null)       // sector interno seleccionado
-  const [sucSelected, setSucSelected] = useState(null) // sucursal seleccionada
+  const [selected, setSelected]         = useState(null)
+  const [sucSelected, setSucSelected]   = useState(null)
   const [showSucursales, setShowSucursales] = useState(false)
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [password, setPassword]         = useState('')
+  const [error, setError]               = useState('')
+  const [loading, setLoading]           = useState(false)
   const router = useRouter()
 
   const handleLogin = async (e) => {
@@ -48,7 +49,9 @@ export default function Home() {
     setLoading(false)
 
     if (res?.ok) {
-      router.push('/sucursales')
+      // Redirigir según el sector
+      const ruta = SECTORES_INTERNOS.find(s => s.code === loginTarget.code)?.ruta || '/sucursales'
+      router.push(ruta)
     } else {
       setError('Clave incorrecta. Intentá de nuevo.')
       setPassword('')
@@ -139,7 +142,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── PANTALLA SUCURSALES: elegir cuál ── */}
+      {/* ── PANTALLA SUCURSALES ── */}
       {showSucursales && (
         <div style={{ width: '100%', maxWidth: '640px', marginBottom: '1.5rem' }}>
           <button onClick={handleBack}
