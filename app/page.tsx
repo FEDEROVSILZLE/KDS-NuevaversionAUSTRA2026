@@ -2,16 +2,20 @@
 import { signIn, useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import {
+  ChefHat, Wheat, PackageOpen, Split,
+  Warehouse, Receipt, Boxes, ShieldCheck, Store,
+} from 'lucide-react'
 
 const SECTORES_INTERNOS = [
-  { code: 'COCINA',      name: 'Cocina',      icon: '🍳', ruta: '/cocina' },
-  { code: 'FABRICA',     name: 'Fábrica',     icon: '⚙️', ruta: '/fabrica' },
-  { code: 'ARMADO',      name: 'Armado',      icon: '📦', ruta: '/armado' },
-  { code: 'DEPOSITO',    name: 'Depósito',    icon: '🏭', ruta: '/deposito' },
-  { code: 'FRACCIONADO', name: 'Fraccionado', icon: '✂️', ruta: '/fraccionado' },
-  { code: 'REMITOS',     name: 'Remitos',     icon: '🧾', ruta: '/remitos' },
-  { code: 'STOCK',       name: 'Stock',       icon: '📊', ruta: '/stock' },
-  { code: 'ADMIN',       name: 'Admin',       icon: '⚡', ruta: '/admin' },
+  { code: 'COCINA',      name: 'Cocina',      Icon: ChefHat,     color: '#c084fc', ruta: '/cocina' },
+  { code: 'FABRICA',     name: 'Fábrica',     Icon: Wheat,       color: '#fcd34d', ruta: '/fabrica' },
+  { code: 'ARMADO',      name: 'Armado',      Icon: PackageOpen, color: '#fbbf24', ruta: '/armado' },
+  { code: 'DEPOSITO',    name: 'Depósito',    Icon: Warehouse,   color: '#f87171', ruta: '/deposito' },
+  { code: 'FRACCIONADO', name: 'Fraccionado', Icon: Split,       color: '#f472b6', ruta: '/fraccionado' },
+  { code: 'REMITOS',     name: 'Remitos',     Icon: Receipt,     color: '#cbd5e1', ruta: '/remitos' },
+  { code: 'STOCK',       name: 'Stock',       Icon: Boxes,       color: '#22d3ee', ruta: '/stock' },
+  { code: 'ADMIN',       name: 'Admin',       Icon: ShieldCheck, color: '#fb923c', ruta: '/admin' },
 ]
 
 const SUCURSALES = [
@@ -120,7 +124,9 @@ export default function Home() {
                 borderRadius: '8px', padding: '1rem .75rem', cursor: 'pointer',
                 textAlign: 'center', transition: 'all .15s'
               }}>
-              <div style={{ fontSize: '1.5rem', marginBottom: '6px' }}>{s.icon}</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>
+                <s.Icon size={28} strokeWidth={1.5} color={s.color} />
+              </div>
               <div style={{ color: selected?.code === s.code ? 'white' : '#7a9bb8', fontSize: '11px', fontWeight: '600', letterSpacing: '.04em' }}>
                 {s.name}
               </div>
@@ -134,7 +140,9 @@ export default function Home() {
               borderRadius: '8px', padding: '1rem .75rem', cursor: 'pointer',
               textAlign: 'center', transition: 'all .15s'
             }}>
-            <div style={{ fontSize: '1.5rem', marginBottom: '6px' }}>🏪</div>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>
+              <Store size={28} strokeWidth={1.5} color="#fb7185" />
+            </div>
             <div style={{ color: '#7a9bb8', fontSize: '11px', fontWeight: '600', letterSpacing: '.04em' }}>
               Sucursales
             </div>
@@ -158,7 +166,9 @@ export default function Home() {
                   borderRadius: '8px', padding: '1rem .75rem', cursor: 'pointer',
                   textAlign: 'center', transition: 'all .15s'
                 }}>
-                <div style={{ fontSize: '1.5rem', marginBottom: '6px' }}>🏪</div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '6px' }}>
+                  <Store size={28} strokeWidth={1.5} color={sucSelected?.code === suc.code ? '#2196f3' : '#fb7185'} />
+                </div>
                 <div style={{ color: sucSelected?.code === suc.code ? 'white' : '#7a9bb8', fontSize: '11px', fontWeight: '600', letterSpacing: '.04em' }}>
                   {suc.name}
                 </div>

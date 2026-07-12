@@ -45,6 +45,7 @@ model products {
   description            String?
   internal_code          String?              @db.VarChar(50)
   codigo_tango           Decimal?             @db.Decimal
+  conversion_factor      Decimal?             @db.Decimal(10, 3)
   is_active              Boolean?             @default(true)
   created_at             DateTime?            @default(now()) @db.Timestamptz(6)
   updated_at             DateTime?            @default(now()) @db.Timestamptz(6)
@@ -371,6 +372,7 @@ model stock {
   sector_id          Int
   product_id         String    @db.Uuid
   quantity           Decimal   @default(0) @db.Decimal(10, 3)
+  quantity_units     Decimal?  @db.Decimal(10, 3)
   unit               String    @db.VarChar(20)
   min_stock          Decimal?  @db.Decimal(10, 3)
   max_stock          Decimal?  @db.Decimal(10, 3)
@@ -456,6 +458,7 @@ model stock_movements {
   product_id     String        @db.Uuid
   movement_type  movement_type
   quantity       Decimal       @db.Decimal(10, 3)
+  quantity_units Decimal?      @db.Decimal(10, 3)
   unit           String        @db.VarChar(20)
   stock_before   Decimal?      @db.Decimal(10, 3)
   stock_after    Decimal?      @db.Decimal(10, 3)
