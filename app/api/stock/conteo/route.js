@@ -14,7 +14,9 @@ export async function POST(request) {
 
   try {
     const { sector_id, conteos } = await request.json()
-    // conteos: [{ product_id, quantity, unit, product_name }]
+    // conteos: [{ product_id, quantity, unit, product_name, quantity_units? }]
+    // quantity_units = cantidad de envases/unidades tal cual la tipeó el usuario
+    // en el conversor (⇄), con o sin conversion_factor oficial cargado.
 
     if (!sector_id || !conteos?.length) {
       return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })
@@ -45,7 +47,20 @@ export async function POST(request) {
         continue
       }
 
-      conteosLimpios.push({ ...c, quantity: cantidad })
+      let unidades = null
+      if (c.quantity_units !== null && c.quantity_units !== undefined && c.quantity_units !== '') {
+        unidades = parseFloat(c.quantity_units)
+        if (isNaN(unidades) || unidades < 0 || Math.abs(unidades) >= LIMITE_DECIMAL) {
+          invalidos.push({
+            product_id: c.product_id,
+            product_name: c.product_name,
+            quantity_units_recibida: c.quantity_units,
+          })
+          continue
+        }
+      }
+
+      conteosLimpios.push({ ...c, quantity: cantidad, quantity_units: unidades })
     }
 
     if (invalidos.length > 0) {
@@ -86,16 +101,21 @@ export async function POST(request) {
 
         // 2. Leer el stock actual ANTES de pisarlo (para saber si cambió algo)
         const [prev] = await tx.$queryRaw`
-          SELECT quantity FROM operations.stock
+          SELECT quantity, quantity_units FROM operations.stock
           WHERE sector_id = ${sectorIdInt} AND product_id = ${c.product_id}::uuid
         `
-        const stockAntes = prev?.quantity != null ? Number(prev.quantity) : null
+        const stockAntes  = prev?.quantity != null ? Number(prev.quantity) : null
+        const unidadesAntes = prev?.quantity_units != null ? Number(prev.quantity_units) : null
 
         // 3. Reflejar el conteo real en operations.stock + registrar el movimiento en
         //    stock_movements — todo vía operations.update_stock(), que además calcula
         //    quantity_units automáticamente si el producto tiene conversion_factor.
-        //    Solo si el conteo realmente cambió el stock — evita ruido por re-guardar el mismo valor.
-        if (stockAntes === null || stockAntes !== c.quantity) {
+        //    Se actualiza si cambió el KG total O si cambió la cantidad de unidades
+        //    contadas (aunque el KG resultante coincida con el que ya había guardado,
+        //    p.ej. al recontar el mismo total con el conversor por primera vez).
+        const cambioKG = stockAntes === null || stockAntes !== c.quantity
+        const cambioUnidades = c.quantity_units !== null && c.quantity_units !== unidadesAntes
+        if (cambioKG || cambioUnidades) {
           const delta = c.quantity - (stockAntes ?? 0)
           await tx.$executeRaw`
             SELECT operations.update_stock(
@@ -106,7 +126,8 @@ export async function POST(request) {
               NULL::uuid,
               'stock_count'::varchar,
               ${usuario}::varchar,
-              'Ajuste por conteo físico'::text
+              'Ajuste por conteo físico'::text,
+              ${c.quantity_units}::numeric
             )
           `
         }

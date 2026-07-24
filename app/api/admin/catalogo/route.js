@@ -78,12 +78,14 @@ export async function GET(request) {
         p.condition,
         p.sub_condition,
         p.codigo_tango,
+        p.conversion_factor,
         p.is_for_branches          AS para_sucursal,
         p.is_produced_in_kitchen   AS cocina,
         p.is_produced_in_fabrica   AS fabrica,
         p.is_produced_in_armado    AS armado,
         p.is_fractionable          AS fracionable,
         st.quantity                AS stock_qty,
+        st.quantity_units          AS stock_units,
         st.unit                    AS stock_unit,
         st.min_stock,
         st.reorder_point,
@@ -103,16 +105,29 @@ export async function GET(request) {
     `
 
     // Calcular semáforo en JS (igual que antes)
-    const resultado = rows.map(r => ({
-      ...r,
-      codigo_tango:  r.codigo_tango  ? Number(r.codigo_tango)  : null,
-      stock_qty:     r.stock_qty     ? Number(r.stock_qty)     : null,
-      min_stock:     r.min_stock     ? Number(r.min_stock)     : null,
-      reorder_point: r.reorder_point ? Number(r.reorder_point) : null,
-      stock_status: r.stock_qty !== null
-        ? (r.reorder_point && Number(r.stock_qty) <= Number(r.reorder_point) ? 'BAJO' : 'OK')
-        : null,
-    }))
+    const resultado = rows.map(r => {
+      // stock_units viene ya calculado por operations.update_stock(); si por algún
+      // motivo faltara (fila vieja) pero el producto tiene conversion_factor, se
+      // deriva acá mismo a partir del peso total.
+      const conversionFactor = r.conversion_factor ? Number(r.conversion_factor) : null
+      const stockQty = r.stock_qty ? Number(r.stock_qty) : null
+      const stockUnits = r.stock_units != null
+        ? Number(r.stock_units)
+        : (conversionFactor && stockQty != null ? stockQty / conversionFactor : null)
+
+      return {
+        ...r,
+        codigo_tango:      r.codigo_tango  ? Number(r.codigo_tango)  : null,
+        conversion_factor: conversionFactor,
+        stock_qty:         stockQty,
+        stock_units:       stockUnits != null ? Math.round(stockUnits) : null,
+        min_stock:         r.min_stock ? Number(r.min_stock) : null,
+        reorder_point:     r.reorder_point ? Number(r.reorder_point) : null,
+        stock_status: stockQty !== null
+          ? (r.reorder_point && stockQty <= Number(r.reorder_point) ? 'BAJO' : 'OK')
+          : null,
+      }
+    })
 
     return NextResponse.json(serialize(resultado))
   } catch (err) {

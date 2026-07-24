@@ -39,7 +39,7 @@ export async function GET(request) {
       where: { sector_id: parseInt(sector_id), is_active: true },
       include: {
         products: {
-          select: { id: true, official_name: true, base_unit: true, condition: true },
+          select: { id: true, official_name: true, base_unit: true, condition: true, conversion_factor: true },
         },
         // Último conteo de este producto en este sector
         sectors: false,
@@ -63,6 +63,7 @@ export async function GET(request) {
           product_name:   c.products.official_name,
           base_unit:      c.products.base_unit,
           condition:      c.products.condition,
+          conversion_factor: c.products.conversion_factor ? Number(c.products.conversion_factor) : null,
           sort_order:     c.sort_order,
           ultimo_conteo:  ultimo ? Number(ultimo.quantity) : null,
           ultima_fecha:   ultimo?.last_updated || null,

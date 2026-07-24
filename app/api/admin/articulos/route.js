@@ -31,7 +31,7 @@ export async function GET(request) {
       where: { official_name: { contains: buscar, mode: 'insensitive' } },
       select: {
         id: true, official_name: true, base_unit: true, condition: true,
-        sub_condition: true, codigo_tango: true, description: true,
+        sub_condition: true, codigo_tango: true, conversion_factor: true, description: true,
         internal_code: true, is_for_branches: true, is_produced_in_kitchen: true,
         is_produced_in_fabrica: true, is_produced_in_armado: true,
         is_fractionable: true, is_active: true,
@@ -54,7 +54,7 @@ export async function POST(request) {
   try { body = await request.json() } catch { return NextResponse.json({ error: 'JSON inválido' }, { status: 400 }) }
 
   const {
-    official_name, base_unit, condition, sub_condition, codigo_tango,
+    official_name, base_unit, condition, sub_condition, codigo_tango, conversion_factor,
     is_for_branches, is_produced_in_kitchen, is_produced_in_fabrica,
     is_produced_in_armado, is_fractionable, description, internal_code,
   } = body
@@ -70,6 +70,11 @@ export async function POST(request) {
     ? Number(codigo_tango) : null
   if (codigo_tango !== '' && codigo_tango != null && isNaN(tangoNum)) {
     return NextResponse.json({ error: 'Código Tango debe ser numérico.' }, { status: 400 })
+  }
+  const conversionNum = (conversion_factor !== '' && conversion_factor != null)
+    ? Number(conversion_factor) : null
+  if (conversion_factor !== '' && conversion_factor != null && (isNaN(conversionNum) || conversionNum <= 0)) {
+    return NextResponse.json({ error: 'Factor de conversión debe ser un número mayor a 0.' }, { status: 400 })
   }
 
   try {
@@ -90,6 +95,7 @@ export async function POST(request) {
         condition:              condition      || null,
         sub_condition:          sub_condition  || null,
         codigo_tango:           tangoNum,
+        conversion_factor:      conversionNum,
         is_for_branches:        is_for_branches        ?? false,
         is_produced_in_kitchen: is_produced_in_kitchen ?? false,
         is_produced_in_fabrica: is_produced_in_fabrica ?? false,

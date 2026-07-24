@@ -64,6 +64,7 @@ export default function StockPage() {
       }
     })
     setConversor(saved)
+    return saved
   }
 
   const updateConversor = (product_id, changes) => {
@@ -75,11 +76,19 @@ export default function StockPage() {
     })
   }
 
-  // Calcular KG a partir del conversor
-  const calcularKG = (product_id, cantUnidades) => {
-    const c = conversor[product_id]
-    if (!c?.activo || !c.peso || cantUnidades === '' || cantUnidades === undefined) return cantUnidades
-    return Math.round(Number(cantUnidades) * Number(c.peso) * 100) / 100
+  // Calcular KG a partir del conversor. Si el producto tiene conversion_factor
+  // cargado en el catálogo (admin), ese es el peso oficial y pisa cualquier
+  // valor tipeado a mano — evita que cada tablet tenga un peso de envase distinto.
+  const calcularKG = (prod, cantUnidades) => {
+    const c = conversor[prod.product_id]
+    if (!c?.activo || cantUnidades === '' || cantUnidades === undefined) return cantUnidades
+    const peso = prod.conversion_factor || c.peso
+    // Conversor activo pero sin peso (ni oficial ni tipeado a mano): no hay forma
+    // de convertir. Devolver undefined en vez de la cantidad cruda — así el
+    // llamador puede detectar la conversión incompleta en vez de guardarla
+    // silenciosamente como si "cantidad de artículos" fuera KG.
+    if (!peso) return undefined
+    return Math.round(Number(cantUnidades) * Number(peso) * 1000) / 1000
   }
 
   useEffect(() => {
@@ -120,11 +129,15 @@ export default function StockPage() {
       if (!res.ok) throw new Error()
       const data = await res.json()
       setProductos(data)
-      cargarConversor(data)
-      // Pre-cargar con el último conteo si existe
+      const conv = cargarConversor(data)
+      // Pre-cargar con el último conteo si existe — salvo que el conversor esté
+      // activo para ese producto, en cuyo caso el campo es "cantidad de artículos"
+      // y precargar el último total en KG rompería el cálculo (KG_viejo × peso).
       const initCant = {}
       data.forEach(p => {
-        initCant[p.product_id] = p.ultimo_conteo !== null ? p.ultimo_conteo : ''
+        initCant[p.product_id] = conv[p.product_id]?.activo
+          ? ''
+          : (p.ultimo_conteo !== null ? p.ultimo_conteo : '')
       })
       setCantidades(initCant)
     } catch {
@@ -149,15 +162,31 @@ export default function StockPage() {
 
   // ── Confirmar conteo ──────────────────────────────────────────────────────
   const confirmarConteo = async () => {
-    const conteos = productos
-      .filter(p => cantidades[p.product_id] !== '' && cantidades[p.product_id] !== undefined)
-      .map(p => ({
-        product_id: p.product_id,
-        quantity:   calcularKG(p.product_id, cantidades[p.product_id]) !== undefined
-                      ? Number(calcularKG(p.product_id, cantidades[p.product_id]))
-                      : Number(cantidades[p.product_id]),
-        unit:       p.base_unit,
-      }))
+    const contados = productos.filter(
+      p => cantidades[p.product_id] !== '' && cantidades[p.product_id] !== undefined
+    )
+
+    // Conversor activo pero sin peso cargado (ni oficial ni tipeado a mano):
+    // calcularKG no puede convertir — bloquear el envío en vez de guardar la
+    // cantidad de artículos como si fuera KG.
+    const incompletos = contados.filter(p => calcularKG(p, cantidades[p.product_id]) === undefined)
+    if (incompletos.length > 0) {
+      mostrarToast(
+        `Falta el peso para convertir: ${incompletos.map(p => p.product_name).join(', ')}`,
+        'err'
+      )
+      return
+    }
+
+    const conteos = contados.map(p => ({
+      product_id: p.product_id,
+      quantity:   Number(calcularKG(p, cantidades[p.product_id])),
+      // Si el conversor está activo, lo que se tipeó es "cantidad de envases",
+      // no KG — se manda tal cual para que quede guardada y visible en admin,
+      // sin depender de que el producto tenga conversion_factor oficial.
+      quantity_units: conversor[p.product_id]?.activo ? Number(cantidades[p.product_id]) : null,
+      unit:       p.base_unit,
+    }))
 
     if (!conteos.length) {
       mostrarToast('Ingresá al menos una cantidad', 'err')
@@ -308,8 +337,12 @@ export default function StockPage() {
                 {productos.map((prod, index) => {
                   const cant = cantidades[prod.product_id]
                   const tieneValor = cant !== '' && cant !== undefined
+                  // ultimo_conteo siempre está en KG/base_unit — cuando el conversor está
+                  // activo, "cant" es cantidad de artículos, así que hay que comparar
+                  // contra el KG equivalente, no contra el valor crudo tipeado.
+                  const kgEquivalente = tieneValor ? calcularKG(prod, cant) : undefined
                   const cambioDesdeUltimo = tieneValor && prod.ultimo_conteo !== null &&
-                    Number(cant) !== prod.ultimo_conteo
+                    kgEquivalente !== undefined && Number(kgEquivalente) !== prod.ultimo_conteo
 
                   return (
                     <div
@@ -333,10 +366,10 @@ export default function StockPage() {
                           {cambioDesdeUltimo && (
                             <span style={{
                               marginLeft: '8px', fontSize: '10px', fontWeight: '700',
-                              color: Number(cant) > prod.ultimo_conteo ? '#4ade80' : '#f87171'
+                              color: Number(kgEquivalente) > prod.ultimo_conteo ? '#4ade80' : '#f87171'
                             }}>
-                              {Number(cant) > prod.ultimo_conteo ? '▲' : '▼'}
-                              {Math.abs(Number(cant) - prod.ultimo_conteo)} vs ayer
+                              {Number(kgEquivalente) > prod.ultimo_conteo ? '▲' : '▼'}
+                              {Math.abs(Number(kgEquivalente) - prod.ultimo_conteo)} vs ayer
                             </span>
                           )}
                         </div>
@@ -346,13 +379,16 @@ export default function StockPage() {
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px', flexShrink: 0 }}>
                         {/* Fila principal: input + unidad */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {conversor[prod.product_id]?.activo && (
+                            <span style={{ color: '#4ade80', fontSize: '11px', fontWeight: '600' }}>Cant. artículos</span>
+                          )}
                           <input
                             ref={el => inputRefs.current[prod.product_id] = el}
                             type="number"
                             min="0"
                             step="0.5"
                             inputMode="decimal"
-                            placeholder="—"
+                            placeholder={conversor[prod.product_id]?.activo ? 'cant.' : '—'}
                             value={cant === '' ? '' : cant}
                             onChange={e => {
                               const val = e.target.value
@@ -371,7 +407,15 @@ export default function StockPage() {
                           />
                           {/* Botón conversor */}
                           <button
-                            onClick={() => updateConversor(prod.product_id, { activo: !conversor[prod.product_id]?.activo })}
+                            onClick={() => {
+                              const activarNuevo = !conversor[prod.product_id]?.activo
+                              updateConversor(prod.product_id, { activo: activarNuevo })
+                              // Al activar, limpiar el campo: pasa a significar "cantidad
+                              // de artículos", no el KG total que pudiera tener cargado.
+                              if (activarNuevo) {
+                                setCantidades(prev => ({ ...prev, [prod.product_id]: '' }))
+                              }
+                            }}
                             style={{
                               background: conversor[prod.product_id]?.activo ? '#1a3a1a' : '#162236',
                               border: `1px solid ${conversor[prod.product_id]?.activo ? '#22c55e' : '#243550'}`,
@@ -385,27 +429,38 @@ export default function StockPage() {
                         {/* Panel conversor — se muestra si está activo */}
                         {conversor[prod.product_id]?.activo && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#0d1f14', border: '1px solid #22c55e', borderRadius: '8px', padding: '6px 10px' }}>
-                            <select
-                              value={conversor[prod.product_id]?.unidad || 'Lata'}
-                              onChange={e => updateConversor(prod.product_id, { unidad: e.target.value })}
-                              style={{ background: '#0f1c2e', border: '1px solid #243550', borderRadius: '5px', color: '#c8d8e8', fontSize: '12px', padding: '3px 6px', cursor: 'pointer' }}
-                            >
-                              {UNIDADES_CONTEO.map(u => <option key={u}>{u}</option>)}
-                            </select>
-                            <span style={{ color: '#8899aa', fontSize: '11px' }}>=</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              placeholder="kg"
-                              value={conversor[prod.product_id]?.peso || ''}
-                              onChange={e => updateConversor(prod.product_id, { peso: e.target.value })}
-                              style={{ background: '#0f1c2e', border: '1px solid #243550', borderRadius: '5px', color: 'white', fontSize: '12px', fontWeight: '600', padding: '3px 6px', width: '55px', textAlign: 'center', outline: 'none' }}
-                            />
-                            <span style={{ color: '#8899aa', fontSize: '11px' }}>kg</span>
-                            {tieneValor && conversor[prod.product_id]?.peso && (
+                            {prod.conversion_factor ? (
+                              // Factor oficial cargado en el catálogo — solo lectura, no se tipea a mano
+                              <>
+                                <span style={{ color: '#8899aa', fontSize: '11px' }}>1 unidad =</span>
+                                <span style={{ color: 'white', fontSize: '12px', fontWeight: '700' }}>{prod.conversion_factor}</span>
+                                <span style={{ color: '#8899aa', fontSize: '11px' }}>{prod.base_unit}</span>
+                              </>
+                            ) : (
+                              <>
+                                <select
+                                  value={conversor[prod.product_id]?.unidad || 'Lata'}
+                                  onChange={e => updateConversor(prod.product_id, { unidad: e.target.value })}
+                                  style={{ background: '#0f1c2e', border: '1px solid #243550', borderRadius: '5px', color: '#c8d8e8', fontSize: '12px', padding: '3px 6px', cursor: 'pointer' }}
+                                >
+                                  {UNIDADES_CONTEO.map(u => <option key={u}>{u}</option>)}
+                                </select>
+                                <span style={{ color: '#8899aa', fontSize: '11px' }}>=</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  placeholder="kg"
+                                  value={conversor[prod.product_id]?.peso || ''}
+                                  onChange={e => updateConversor(prod.product_id, { peso: e.target.value })}
+                                  style={{ background: '#0f1c2e', border: '1px solid #243550', borderRadius: '5px', color: 'white', fontSize: '12px', fontWeight: '600', padding: '3px 6px', width: '55px', textAlign: 'center', outline: 'none' }}
+                                />
+                                <span style={{ color: '#8899aa', fontSize: '11px' }}>kg</span>
+                              </>
+                            )}
+                            {tieneValor && (prod.conversion_factor || conversor[prod.product_id]?.peso) && (
                               <span style={{ color: '#4ade80', fontSize: '12px', fontWeight: '700', marginLeft: '4px' }}>
-                                = {calcularKG(prod.product_id, cant)} {prod.base_unit}
+                                = {calcularKG(prod, cant)} {prod.base_unit}
                               </span>
                             )}
                           </div>
