@@ -40,7 +40,7 @@ export async function PUT(request, { params }) {
   if (!product) return NextResponse.json({ error: 'Artículo no encontrado.' }, { status: 404 })
 
   const {
-    official_name, base_unit, condition, sub_condition, codigo_tango,
+    official_name, base_unit, condition, sub_condition, codigo_tango, conversion_factor,
     is_for_branches, is_produced_in_kitchen, is_produced_in_fabrica,
     is_produced_in_armado, is_fractionable, is_active,
   } = body
@@ -61,6 +61,12 @@ export async function PUT(request, { params }) {
   if (base_unit !== undefined && !VALID_UNITS.includes(base_unit)) {
     return NextResponse.json({ error: `Unidad inválida. Válidas: ${VALID_UNITS.join(', ')}` }, { status: 400 })
   }
+  if (conversion_factor !== undefined && conversion_factor !== '' && conversion_factor != null) {
+    const n = Number(conversion_factor)
+    if (isNaN(n) || n <= 0) {
+      return NextResponse.json({ error: 'Factor de conversión debe ser un número mayor a 0.' }, { status: 400 })
+    }
+  }
 
   // Construir payload solo con campos presentes en el body
   const payload = {}
@@ -70,6 +76,9 @@ export async function PUT(request, { params }) {
   if (sub_condition  !== undefined) payload.sub_condition = sub_condition || null
   if (codigo_tango   !== undefined) {
     payload.codigo_tango = (codigo_tango !== '' && codigo_tango != null) ? Number(codigo_tango) : null
+  }
+  if (conversion_factor !== undefined) {
+    payload.conversion_factor = (conversion_factor !== '' && conversion_factor != null) ? Number(conversion_factor) : null
   }
   if (is_for_branches        !== undefined) payload.is_for_branches        = Boolean(is_for_branches)
   if (is_produced_in_kitchen !== undefined) payload.is_produced_in_kitchen = Boolean(is_produced_in_kitchen)

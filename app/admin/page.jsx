@@ -47,6 +47,7 @@ const FIELD_LABELS = {
   condition:              'Condición',
   sub_condition:          'Sub-categoría',
   codigo_tango:           'Código Tango',
+  conversion_factor:      'Factor de conversión',
   is_for_branches:        'Para sucursales',
   is_produced_in_kitchen: 'Cocina',
   is_produced_in_fabrica: 'Fábrica',
@@ -266,6 +267,15 @@ function CamposProducto({ values, onChange, modoEdicion = false }) {
         </div>
       </div>
       <div>
+        <label style={s.label}>Factor de conversión (KG por unidad física)</label>
+        <input
+          style={s.input} type="number" step="any" min="0"
+          value={values.conversion_factor ?? ''}
+          onChange={e => onChange('conversion_factor', e.target.value)}
+          placeholder="Ej: 7.5 — dejar vacío si no se cuenta por unidades"
+        />
+      </div>
+      <div>
         <p style={{ ...s.label, marginBottom: 8 }}>Flags de producción / distribución</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
           {[
@@ -296,7 +306,7 @@ function CamposProducto({ values, onChange, modoEdicion = false }) {
 function ModalCrearArticulo({ onClose, onSuccess }) {
   const [values, setValues] = useState({
     official_name: '', base_unit: 'KG', condition: '', sub_condition: '',
-    codigo_tango: '', description: '', internal_code: '',
+    codigo_tango: '', conversion_factor: '', description: '', internal_code: '',
     is_for_branches: false, is_produced_in_kitchen: false, is_produced_in_fabrica: false,
     is_produced_in_armado: false, is_fractionable: false,
   })
@@ -376,6 +386,7 @@ function ModalEditarArticulo({ onClose, onSuccess }) {
       condition:              prod.condition              || '',
       sub_condition:          prod.sub_condition          || '',
       codigo_tango:           prod.codigo_tango           ?? '',
+      conversion_factor:      prod.conversion_factor       ?? '',
       description:            prod.description            || '',
       internal_code:          prod.internal_code          || '',
       is_for_branches:        !!prod.is_for_branches,
@@ -705,10 +716,12 @@ function SeccionCatalogo({ pendingProductIds = new Set(), onRefreshPending }) {
                 <th style={s.th}>Unid.</th>
                 {modoAlertas && <th style={s.th}>Sector</th>}
                 <th style={{ ...s.th, textAlign: 'right' }}>Stock</th>
+                {!modoAlertas && <th style={{ ...s.th, textAlign: 'right' }}>Cant.</th>}
                 {(sectorId && !modoAlertas) && <th style={{ ...s.th, textAlign: 'right' }}>Reorden</th>}
                 <th style={{ ...s.th, textAlign: 'center' }}>Estado</th>
                 {(sectorId || modoAlertas) && <th style={s.th}>Último mov.</th>}
                 <th style={{ ...s.th, textAlign: 'center' }}>Tango</th>
+                <th style={{ ...s.th, textAlign: 'center' }}>Conv.</th>
               </tr>
             </thead>
             <tbody>
@@ -741,6 +754,15 @@ function SeccionCatalogo({ pendingProductIds = new Set(), onRefreshPending }) {
                     <td style={{ ...s.td, textAlign: 'right', fontWeight: 700, color: p.stock_qty !== null ? '#e2eaf4' : '#243550' }}>
                       {p.stock_qty !== null ? p.stock_qty : '—'}
                     </td>
+                    {!modoAlertas && (
+                      <td
+                        style={{ ...s.td, textAlign: 'right', color: p.stock_units === null ? '#243550' : (p.conversion_factor ? '#7dd3fc' : '#f59e0b'), fontSize: 12 }}
+                        title={p.stock_units !== null && !p.conversion_factor ? 'Cantidad contada a mano con el conversor, sin factor de conversión oficial cargado en el catálogo' : undefined}
+                      >
+                        {p.stock_units !== null ? p.stock_units : '—'}
+                        {p.stock_units !== null && !p.conversion_factor ? ' *' : ''}
+                      </td>
+                    )}
                     {(sectorId && !modoAlertas) && (
                       <td style={{ ...s.td, textAlign: 'right', color: '#8899aa', fontSize: 12 }}>
                         {p.reorder_point !== null ? p.reorder_point : '—'}
@@ -758,6 +780,9 @@ function SeccionCatalogo({ pendingProductIds = new Set(), onRefreshPending }) {
                       </td>
                     )}
                     <td style={{ ...s.td, textAlign: 'center', color: '#4a7fa5', fontSize: 11 }}>{p.codigo_tango || ''}</td>
+                    <td style={{ ...s.td, textAlign: 'center', color: '#4a7fa5', fontSize: 11 }}>
+                      {p.conversion_factor ? `${p.conversion_factor} kg` : ''}
+                    </td>
                   </tr>
                 )
               })}
