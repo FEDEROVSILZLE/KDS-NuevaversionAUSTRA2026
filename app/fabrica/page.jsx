@@ -2,6 +2,7 @@
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useCallback, useRef } from 'react'
+import ProduccionDiaria from '@/components/ProduccionDiaria'
 
 function fechaHoy() {
   return new Intl.DateTimeFormat('es-AR', {
@@ -232,11 +233,21 @@ export default function FabricaPage() {
               <span>Pedidos del día</span>
               <span style={s.btnSub}>Ver y confirmar producción</span>
             </button>
+            <button style={{ ...s.btnLanding, borderColor: '#a855f7' }} onClick={() => setVista('produccion')}>
+              <span style={{ fontSize: '2rem' }}>📝</span>
+              <span>Producción del día</span>
+              <span style={s.btnSub}>Cargar insumos y producido</span>
+            </button>
           </div>
           <p style={{ color: '#8899aa', fontSize: '12px', marginTop: '1rem' }}>
             Los pedidos de Fábrica se reciben hasta las 14:30 hs
           </p>
         </main>
+      )}
+
+      {/* ══ PRODUCCIÓN DEL DÍA ══ */}
+      {vista === 'produccion' && (
+        <ProduccionDiaria sectorCode="FABRICA" sectorLabel="Fábrica" apiPath="/api/fabrica/produccion" />
       )}
 
       {/* ══ PEDIDOS ══ */}

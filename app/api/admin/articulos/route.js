@@ -34,6 +34,7 @@ export async function GET(request) {
         sub_condition: true, codigo_tango: true, conversion_factor: true, description: true,
         internal_code: true, is_for_branches: true, is_produced_in_kitchen: true,
         is_produced_in_fabrica: true, is_produced_in_armado: true,
+        is_produced_in_fraccionado: true,
         is_fractionable: true, is_active: true,
       },
       orderBy: { official_name: 'asc' },
@@ -56,7 +57,7 @@ export async function POST(request) {
   const {
     official_name, base_unit, condition, sub_condition, codigo_tango, conversion_factor,
     is_for_branches, is_produced_in_kitchen, is_produced_in_fabrica,
-    is_produced_in_armado, is_fractionable, description, internal_code,
+    is_produced_in_armado, is_produced_in_fraccionado, is_fractionable, description, internal_code,
   } = body
 
   // Validaciones
@@ -100,6 +101,7 @@ export async function POST(request) {
         is_produced_in_kitchen: is_produced_in_kitchen ?? false,
         is_produced_in_fabrica: is_produced_in_fabrica ?? false,
         is_produced_in_armado:  is_produced_in_armado  ?? false,
+        is_produced_in_fraccionado: is_produced_in_fraccionado ?? false,
         is_fractionable:        is_fractionable        ?? false,
         description:            description    || null,
         internal_code:          internal_code  || null,

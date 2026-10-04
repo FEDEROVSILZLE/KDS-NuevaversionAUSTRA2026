@@ -41,6 +41,7 @@ model products {
   is_produced_in_kitchen Boolean?             @default(false)
   is_produced_in_fabrica Boolean?             @default(false)
   is_produced_in_armado  Boolean?             @default(false)
+  is_produced_in_fraccionado Boolean?         @default(false)
   is_fractionable        Boolean?             @default(false)
   description            String?
   internal_code          String?              @db.VarChar(50)
@@ -61,6 +62,8 @@ model products {
   stock_count_config     stock_count_config[]
   stock_lots             stock_lots[]
   stock_movements        stock_movements[]
+  production_log_inputs  production_log_inputs[]
+  production_log_outputs production_log_outputs[]
 
   @@schema("core")
 }
@@ -139,6 +142,7 @@ model sectors {
   stock_count_config                                      stock_count_config[]
   stock_lots                                              stock_lots[]
   stock_movements                                         stock_movements[]
+  production_logs                                         production_logs[]
 
   @@index([type], map: "idx_sectors_type")
   @@schema("core")
@@ -474,6 +478,60 @@ model stock_movements {
   @@index([reference_type, reference_id], map: "idx_stock_movements_reference")
   @@index([sector_id, product_id], map: "idx_stock_movements_sector_product")
   @@index([movement_type], map: "idx_stock_movements_type")
+  @@schema("operations")
+}
+
+/// "Producción del día" (Fábrica/Armado/Fraccionado) — reemplaza la planilla de papel RC-7397-2.
+/// v1: solo registro, no toca operations.stock (ver sql/produccion_diaria.sql).
+model production_logs {
+  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sector_id               Int
+  log_date                DateTime                  @db.Date
+  notes                   String?
+  created_by              String?                   @db.VarChar(100)
+  updated_by              String?                   @db.VarChar(100)
+  created_at              DateTime?                 @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?                 @default(now()) @db.Timestamptz(6)
+  sectors                 sectors                   @relation(fields: [sector_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  production_log_inputs   production_log_inputs[]
+  production_log_outputs  production_log_outputs[]
+
+  @@unique([sector_id, log_date])
+  @@schema("operations")
+}
+
+/// "Materia prima e insumos retirados de Depósito" — detalle de production_logs.
+model production_log_inputs {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  production_log_id  String           @db.Uuid
+  product_id         String           @db.Uuid
+  quantity           Decimal          @db.Decimal(10, 3)
+  unit               String           @db.VarChar(20)
+  brand              String?          @db.VarChar(100)
+  lot_code           String?          @db.VarChar(100)
+  expires_at         DateTime?        @db.Date
+  sort_order         Int?             @default(0)
+  created_at         DateTime?        @default(now()) @db.Timestamptz(6)
+  production_logs    production_logs  @relation(fields: [production_log_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  products           products         @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([production_log_id], map: "idx_production_log_inputs_log")
+  @@schema("operations")
+}
+
+/// "Carga de producción diaria de [Sector]" — detalle de production_logs.
+model production_log_outputs {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  production_log_id  String           @db.Uuid
+  product_id         String           @db.Uuid
+  quantity           Decimal          @db.Decimal(10, 3)
+  unit               String           @db.VarChar(20)
+  sort_order         Int?             @default(0)
+  created_at         DateTime?        @default(now()) @db.Timestamptz(6)
+  production_logs    production_logs  @relation(fields: [production_log_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  products           products         @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([production_log_id], map: "idx_production_log_outputs_log")
   @@schema("operations")
 }
 

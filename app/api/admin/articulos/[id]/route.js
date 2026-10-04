@@ -42,7 +42,7 @@ export async function PUT(request, { params }) {
   const {
     official_name, base_unit, condition, sub_condition, codigo_tango, conversion_factor,
     is_for_branches, is_produced_in_kitchen, is_produced_in_fabrica,
-    is_produced_in_armado, is_fractionable, is_active,
+    is_produced_in_armado, is_produced_in_fraccionado, is_fractionable, is_active,
   } = body
 
   // Validar solo los campos enviados
@@ -84,6 +84,7 @@ export async function PUT(request, { params }) {
   if (is_produced_in_kitchen !== undefined) payload.is_produced_in_kitchen = Boolean(is_produced_in_kitchen)
   if (is_produced_in_fabrica !== undefined) payload.is_produced_in_fabrica = Boolean(is_produced_in_fabrica)
   if (is_produced_in_armado  !== undefined) payload.is_produced_in_armado  = Boolean(is_produced_in_armado)
+  if (is_produced_in_fraccionado !== undefined) payload.is_produced_in_fraccionado = Boolean(is_produced_in_fraccionado)
   if (is_fractionable        !== undefined) payload.is_fractionable        = Boolean(is_fractionable)
   if (is_active              !== undefined) payload.is_active              = Boolean(is_active)
 

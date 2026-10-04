@@ -83,6 +83,7 @@ export async function GET(request) {
         p.is_produced_in_kitchen   AS cocina,
         p.is_produced_in_fabrica   AS fabrica,
         p.is_produced_in_armado    AS armado,
+        p.is_produced_in_fraccionado AS fraccionado,
         p.is_fractionable          AS fracionable,
         st.quantity                AS stock_qty,
         st.quantity_units          AS stock_units,

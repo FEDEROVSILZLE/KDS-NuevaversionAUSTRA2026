@@ -2,6 +2,7 @@
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useCallback, useRef } from 'react'
+import ProduccionDiaria from '@/components/ProduccionDiaria'
 
 function fechaHoy() {
   return new Intl.DateTimeFormat('es-AR', {
@@ -358,8 +359,18 @@ export default function FraccionadoPage() {
                 <span style={s.badgeBulk}>{lotesBulk.length}</span>
               )}
             </button>
+            <button style={{ ...s.btnLanding, borderColor: '#a855f7' }} onClick={() => setVista('produccion')}>
+              <span style={{ fontSize: '2rem' }}>📝</span>
+              <span>Producción del día</span>
+              <span style={s.btnSub}>Cargar insumos y producido</span>
+            </button>
           </div>
         </main>
+      )}
+
+      {/* ══ PRODUCCIÓN DEL DÍA ══ */}
+      {vista === 'produccion' && (
+        <ProduccionDiaria sectorCode="FRACCIONADO" sectorLabel="Fraccionado" apiPath="/api/fraccionado/produccion" />
       )}
 
       {/* ══ PEDIDOS DEL DÍA ══ */}

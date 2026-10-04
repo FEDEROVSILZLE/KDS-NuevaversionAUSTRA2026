@@ -2,6 +2,7 @@
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
+import ProduccionDiaria from '@/components/ProduccionDiaria'
 
 // Devuelve YYYY-MM-DD en timezone Argentina, con offset de días
 function fechaEnAR(offsetDias = 0) {
@@ -313,8 +314,18 @@ export default function ArmadoPage() {
               <span>Pedir a Cocina</span>
               <span style={s.btnSub}>Seleccioná recetas y kg</span>
             </button>
+            <button style={{ ...s.btnLanding, borderColor: '#a855f7' }} onClick={() => setVista('produccion')}>
+              <span style={{ fontSize: '2rem' }}>📝</span>
+              <span>Producción del día</span>
+              <span style={s.btnSub}>Cargar insumos y producido</span>
+            </button>
           </div>
         </main>
+      )}
+
+      {/* ══ PRODUCCIÓN DEL DÍA ══ */}
+      {vista === 'produccion' && (
+        <ProduccionDiaria sectorCode="ARMADO" sectorLabel="Armado" apiPath="/api/armado/produccion" />
       )}
 
       {/* ══ PEDIDOS DEL DÍA ══ */}

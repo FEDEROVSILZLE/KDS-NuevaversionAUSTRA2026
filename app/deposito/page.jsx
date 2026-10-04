@@ -43,10 +43,33 @@ export default function DepositoPage() {
   const [toast, setToast]                   = useState(null)
   // Default: mañana (pedidos hechos anoche)
   const [fechaSeleccionada, setFechaSeleccionada] = useState(fechaEnAR(1))
+  const [sucursalSeleccionada, setSucursalSeleccionada] = useState('')
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/')
   }, [status, router])
+
+  useEffect(() => {
+    if (!datos?.por_sucursal?.length) return
+    setSucursalSeleccionada(prev =>
+      prev && datos.por_sucursal.some(s => s.branch_code === prev)
+        ? prev
+        : datos.por_sucursal[0].branch_code
+    )
+  }, [datos])
+
+  const sucursalActual = tabActivo === 'sucursales'
+    ? (datos?.por_sucursal?.find(s => s.branch_code === sucursalSeleccionada) || datos?.por_sucursal?.[0] || null)
+    : null
+
+  const idsSucursalActual = sucursalActual ? new Set(sucursalActual.items.map(i => i.id)) : null
+
+  const listosRelevantes = idsSucursalActual
+    ? Object.entries(listos).filter(([id, v]) => v && idsSucursalActual.has(id))
+    : Object.entries(listos).filter(([, v]) => v)
+
+  const hayListos   = listosRelevantes.length > 0
+  const totalListos = listosRelevantes.length
 
   const mostrarToast = (msg, tipo = 'ok') => {
     setToast({ msg, tipo })
@@ -91,8 +114,7 @@ export default function DepositoPage() {
   }
 
   const confirmar = async () => {
-    const payload = Object.entries(listos)
-      .filter(([, listo]) => listo)
+    const payload = listosRelevantes
       .map(([item_id]) => ({
         item_id,
         listo: true,
@@ -129,9 +151,6 @@ export default function DepositoPage() {
   if (status === 'loading') return (
     <div style={s.page}><p style={{ color: '#8899aa', margin: 'auto' }}>Cargando...</p></div>
   )
-
-  const hayListos    = Object.values(listos).some(Boolean)
-  const totalListos  = Object.values(listos).filter(Boolean).length
 
   return (
     <div style={s.page}>
@@ -251,7 +270,25 @@ export default function DepositoPage() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   {datos.por_sucursal.length === 0 ? (
                     <p style={{ textAlign: 'center', color: '#8899aa', padding: '2rem' }}>Sin pedidos pendientes para esta fecha</p>
-                  ) : datos.por_sucursal.map(suc => {
+                  ) : (
+                    <>
+                      <div style={s.selectorSucursalBar}>
+                        <label style={s.selectorSucursalLabel}>Sucursal:</label>
+                        <select
+                          value={sucursalActual?.branch_code || ''}
+                          onChange={e => setSucursalSeleccionada(e.target.value)}
+                          style={s.selectSucursal}
+                        >
+                          {datos.por_sucursal.map(op => (
+                            <option key={op.branch_code} value={op.branch_code}>
+                              {op.branch_name || op.branch_code}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {sucursalActual && (() => {
+                    const suc           = sucursalActual
                     const pendientes    = suc.items.filter(i => i.item_status !== 'READY_FOR_PICKUP')
                     const todosMarcados = pendientes.length > 0 && pendientes.every(i => listos[i.id])
 
@@ -322,7 +359,9 @@ export default function DepositoPage() {
                         </table>
                       </div>
                     )
-                  })}
+                  })()}
+                    </>
+                  )}
                 </div>
               )}
 
@@ -366,6 +405,9 @@ const s = {
   tabs:              { display: 'flex', gap: '4px', marginBottom: '1rem', borderBottom: '1px solid #243550' },
   tab:               { background: 'none', border: 'none', color: '#8899aa', fontSize: '14px', fontWeight: '600', padding: '8px 20px', cursor: 'pointer', borderBottom: '2px solid transparent' },
   tabActivo:         { color: '#60a5fa', borderBottom: '2px solid #60a5fa' },
+  selectorSucursalBar:   { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' },
+  selectorSucursalLabel: { color: '#7a9bb8', fontSize: '12px', fontWeight: '600' },
+  selectSucursal:        { background: '#162236', border: '1px solid #243550', borderRadius: '6px', color: '#c8d8e8', fontSize: '13px', fontWeight: '600', padding: '6px 12px', cursor: 'pointer', outline: 'none', minWidth: '220px' },
   tabla:             { width: '100%', borderCollapse: 'collapse', fontSize: '13px' },
   th:                { background: '#0f1c2e', color: '#4a7fa5', padding: '8px 12px', textAlign: 'left', fontSize: '11px', fontWeight: '700', letterSpacing: '.06em', textTransform: 'uppercase', borderBottom: '1px solid #243550', position: 'sticky', top: 0 },
   td:                { color: '#c8d8e8', padding: '8px 12px', borderBottom: '1px solid #1a2a3a' },

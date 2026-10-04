@@ -52,6 +52,7 @@ const FIELD_LABELS = {
   is_produced_in_kitchen: 'Cocina',
   is_produced_in_fabrica: 'Fábrica',
   is_produced_in_armado:  'Armado',
+  is_produced_in_fraccionado: 'Fraccionado',
   is_fractionable:        'Fraccionable',
   is_active:              'Activo',
 }
@@ -283,6 +284,7 @@ function CamposProducto({ values, onChange, modoEdicion = false }) {
             ['is_produced_in_kitchen', 'Cocina'],
             ['is_produced_in_fabrica', 'Fábrica'],
             ['is_produced_in_armado',  'Armado'],
+            ['is_produced_in_fraccionado', 'Fraccionado'],
             ['is_fractionable',        'Fraccionable'],
           ].map(([key, label]) => (
             <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#c8d8e8', fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
@@ -308,7 +310,7 @@ function ModalCrearArticulo({ onClose, onSuccess }) {
     official_name: '', base_unit: 'KG', condition: '', sub_condition: '',
     codigo_tango: '', conversion_factor: '', description: '', internal_code: '',
     is_for_branches: false, is_produced_in_kitchen: false, is_produced_in_fabrica: false,
-    is_produced_in_armado: false, is_fractionable: false,
+    is_produced_in_armado: false, is_produced_in_fraccionado: false, is_fractionable: false,
   })
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
@@ -393,6 +395,7 @@ function ModalEditarArticulo({ onClose, onSuccess }) {
       is_produced_in_kitchen: !!prod.is_produced_in_kitchen,
       is_produced_in_fabrica: !!prod.is_produced_in_fabrica,
       is_produced_in_armado:  !!prod.is_produced_in_armado,
+      is_produced_in_fraccionado: !!prod.is_produced_in_fraccionado,
       is_fractionable:        !!prod.is_fractionable,
       is_active:              prod.is_active ?? true,
     })
@@ -745,6 +748,7 @@ function SeccionCatalogo({ pendingProductIds = new Set(), onRefreshPending }) {
                         {p.cocina        && <span style={s.flag}>coc</span>}
                         {p.fabrica       && <span style={s.flag}>fab</span>}
                         {p.armado        && <span style={s.flag}>arm</span>}
+                        {p.fraccionado   && <span style={s.flag}>fracc</span>}
                         {p.fracionable   && <span style={s.flag}>frac</span>}
                       </div>
                     </td>
