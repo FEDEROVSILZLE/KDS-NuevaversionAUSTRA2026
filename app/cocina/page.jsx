@@ -3,6 +3,23 @@ import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useState, useEffect, useCallback } from 'react'
 
+// ── Tickets de producción ────────────────────────────────────────────────────
+function formatDuracion(seg) {
+  const t = Math.max(0, Math.floor(seg))
+  const h = Math.floor(t / 3600)
+  const m = Math.floor((t % 3600) / 60)
+  const s = t % 60
+  const pad = n => String(n).padStart(2, '0')
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
+}
+
+const COLOR_ALERTA = {
+  OK:          '#7dd3fc',
+  ATENCION:    '#f59e0b',
+  CRITICO:     '#ef4444',
+  PAUSA_LARGA: '#ef4444',
+}
+
 function fechaHoy() {
   return new Intl.DateTimeFormat('es-AR', {
     timeZone: 'America/Argentina/Buenos_Aires',
@@ -22,6 +39,12 @@ export default function CocinaPage() {
   const [recetaActiva, setRecetaActiva] = useState(null)
   const [loadingReceta, setLoadingReceta] = useState(false)
   const [toast, setToast]               = useState(null)
+
+  // ── Tickets (inicio/fin de producción) ─────────────────────────────────────
+  const [tickets, setTickets]           = useState({})   // { [order_item_id]: ticket }
+  const [ticketsAt, setTicketsAt]       = useState(0)    // ms locales del último fetch
+  const [ahora, setAhora]               = useState(0)
+  const [accionando, setAccionando]     = useState({})
 
   // ── Stock modal ────────────────────────────────────────────────────────────
   const [stockModal, setStockModal]     = useState(false)
@@ -68,6 +91,54 @@ export default function CocinaPage() {
   useEffect(() => {
     if (status === 'authenticated') cargarOrdenes()
   }, [status, cargarOrdenes])
+
+  // ── Tickets: carga + refresco cada 30 s (no pisa las cantidades tipeadas) ──
+  const cargarTickets = useCallback(async () => {
+    try {
+      const res = await fetch('/api/cocina/tickets')
+      if (!res.ok) return
+      const data = await res.json()
+      setTickets(data.tickets || {})
+      setTicketsAt(Date.now())
+    } catch { /* se reintenta en el próximo ciclo */ }
+  }, [])
+
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    const first = setTimeout(cargarTickets, 0)
+    const poll  = setInterval(cargarTickets, 30000)
+    const tick  = setInterval(() => setAhora(Date.now()), 1000)
+    return () => { clearTimeout(first); clearInterval(poll); clearInterval(tick) }
+  }, [status, cargarTickets])
+
+  // Segundos netos del ticket: lo que dijo el server + lo que pasó desde el fetch.
+  // No depende del reloj de la PC (solo de la diferencia local).
+  const segundosTicket = (t) => {
+    if (!t) return 0
+    if (t.status !== 'IN_PROGRESS') return t.elapsed_s ?? 0
+    return (t.elapsed_s ?? 0) + Math.max(0, (ahora - ticketsAt) / 1000)
+  }
+
+  const accionTicket = async (item, action) => {
+    setAccionando(prev => ({ ...prev, [item.id]: true }))
+    try {
+      const res = await fetch('/api/cocina/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, item_id: item.id, client_ts: new Date().toISOString() }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Error')
+      if (action === 'start')  mostrarToast(`▶ ${item.product_name} en producción`)
+      if (action === 'pause')  mostrarToast(`${item.product_name} pausado`)
+      if (action === 'resume') mostrarToast(`▶ ${item.product_name} reanudado`)
+    } catch (e) {
+      mostrarToast(e.message || 'Error en el ticket', 'err')
+    } finally {
+      setAccionando(prev => ({ ...prev, [item.id]: false }))
+      cargarTickets()
+    }
+  }
 
   // ── Abrir modal de stock ───────────────────────────────────────────────────
   const abrirStock = async () => {
@@ -121,19 +192,30 @@ export default function CocinaPage() {
 
     setConfirmando(prev => ({ ...prev, [item.id]: true }))
     try {
-      const res = await fetch('/api/cocina/ordenes', {
+      // Finaliza el ticket y confirma el ítem en una sola transacción.
+      // Si nunca tocaron ▶, el server crea el ticket y lo cierra en el acto (no cuenta para tiempos).
+      const res = await fetch('/api/cocina/tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: item.id, produced_quantity: Number(cantidad) }),
+        body: JSON.stringify({
+          action: 'finish',
+          item_id: item.id,
+          produced_quantity: Number(cantidad),
+          client_ts: new Date().toISOString(),
+        }),
       })
-      if (!res.ok) throw new Error()
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Error al confirmar')
       setConfirmados(prev => ({ ...prev, [item.id]: true }))
-      mostrarToast(`${item.product_name} confirmado ✓`)
+      mostrarToast(data.sin_inicio
+        ? `${item.product_name} confirmado ✓ (sin ▶ inicio: no suma a tiempos)`
+        : `${item.product_name} confirmado ✓`)
       if (recetaActiva?.item.id === item.id) setRecetaActiva(null)
-    } catch {
-      mostrarToast('Error al confirmar', 'err')
+    } catch (e) {
+      mostrarToast(e.message || 'Error al confirmar', 'err')
     } finally {
       setConfirmando(prev => ({ ...prev, [item.id]: false }))
+      cargarTickets()
     }
   }
 
@@ -178,6 +260,18 @@ export default function CocinaPage() {
       ) : (
         <main style={s.main}>
 
+          {/* ── AVISO DE TICKETS DEMORADOS ── */}
+          {(() => {
+            const demorados = Object.values(tickets).filter(t => t.alerta === 'CRITICO' || t.alerta === 'PAUSA_LARGA')
+            if (demorados.length === 0) return null
+            return (
+              <div style={s.bannerDemora}>
+                ⚠ {demorados.length} ticket{demorados.length !== 1 ? 's' : ''} demorado{demorados.length !== 1 ? 's' : ''}.
+                ¿Siguen en curso? Si ya terminaron, confirmalos con ✓; si están frenados, tocá Pausa.
+              </div>
+            )
+          })()}
+
           {/* ── DOS COLUMNAS: EMP y FRACC ── */}
           <div style={s.cols}>
             <Columna
@@ -191,6 +285,10 @@ export default function CocinaPage() {
               onCantidad={(id, val) => setCantidades(prev => ({ ...prev, [id]: val }))}
               onVerReceta={verReceta}
               onConfirmar={confirmar}
+              tickets={tickets}
+              segundosTicket={segundosTicket}
+              accionando={accionando}
+              onTicket={accionTicket}
             />
             <Columna
               titulo="FRACC."
@@ -203,6 +301,10 @@ export default function CocinaPage() {
               onCantidad={(id, val) => setCantidades(prev => ({ ...prev, [id]: val }))}
               onVerReceta={verReceta}
               onConfirmar={confirmar}
+              tickets={tickets}
+              segundosTicket={segundosTicket}
+              accionando={accionando}
+              onTicket={accionTicket}
             />
           </div>
 
@@ -347,7 +449,7 @@ export default function CocinaPage() {
 }
 
 // ─── Componente columna ───────────────────────────────────────────────────────
-function Columna({ titulo, color, items, cantidades, confirmados, confirmando, recetaActiva, onCantidad, onVerReceta, onConfirmar }) {
+function Columna({ titulo, color, items, cantidades, confirmados, confirmando, recetaActiva, onCantidad, onVerReceta, onConfirmar, tickets, segundosTicket, accionando, onTicket }) {
   const pendientes   = items.filter(i => !confirmados[i.id])
   const confirmadosL = items.filter(i => confirmados[i.id])
 
@@ -371,6 +473,7 @@ function Columna({ titulo, color, items, cantidades, confirmados, confirmando, r
               <th style={col.th}>Descripción</th>
               <th style={{ ...col.th, width: '110px', textAlign: 'center' }}>Cant. pedida</th>
               <th style={{ ...col.th, width: '110px', textAlign: 'center' }}>Producir</th>
+              <th style={{ ...col.th, width: '120px', textAlign: 'center' }}>Tiempo</th>
               <th style={{ ...col.th, width: '40px' }}></th>
               <th style={{ ...col.th, width: '80px', textAlign: 'center' }}>✓</th>
             </tr>
@@ -387,6 +490,10 @@ function Columna({ titulo, color, items, cantidades, confirmados, confirmando, r
                 onCantidad={onCantidad}
                 onVerReceta={onVerReceta}
                 onConfirmar={onConfirmar}
+                ticket={tickets[item.id]}
+                segundos={segundosTicket(tickets[item.id])}
+                accionando={accionando[item.id]}
+                onTicket={onTicket}
               />
             ))}
             {confirmadosL.map(item => (
@@ -410,11 +517,14 @@ function Columna({ titulo, color, items, cantidades, confirmados, confirmando, r
 }
 
 // ─── Fila de producción ───────────────────────────────────────────────────────
-function FilaProduccion({ item, cantidad, confirmado, confirmando, esActiva, onCantidad, onVerReceta, onConfirmar }) {
+function FilaProduccion({ item, cantidad, confirmado, confirmando, esActiva, onCantidad, onVerReceta, onConfirmar, ticket, segundos, accionando, onTicket }) {
+  const alerta  = ticket?.alerta || 'OK'
+  const enRojo  = !confirmado && (alerta === 'CRITICO' || alerta === 'PAUSA_LARGA')
+  const pausado = ticket?.status === 'PAUSED'
   return (
     <tr
       style={{
-        background: confirmado ? '#0d2518' : esActiva ? '#1a2f1a' : 'transparent',
+        background: confirmado ? '#0d2518' : enRojo ? '#2a1414' : esActiva ? '#1a2f1a' : 'transparent',
         opacity: confirmado ? 0.6 : 1,
         cursor: 'pointer',
       }}
@@ -447,6 +557,37 @@ function FilaProduccion({ item, cantidad, confirmado, confirmando, esActiva, onC
             borderColor: Number(cantidad) !== item.requested_quantity ? '#f59e0b' : '#243550',
           }}
         />
+      </td>
+      <td style={{ ...col.td, textAlign: 'center', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+        {!confirmado && (
+          !ticket ? (
+            <button
+              style={{ ...col.btnTicket, color: '#22c55e', borderColor: '#14532d' }}
+              disabled={accionando}
+              onClick={() => onTicket(item, 'start')}
+              title="Iniciar producción"
+            >
+              {accionando ? '...' : '▶ Iniciar'}
+            </button>
+          ) : (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <span
+                style={{ fontVariantNumeric: 'tabular-nums', fontWeight: '700', color: pausado ? '#6b7280' : COLOR_ALERTA[alerta] }}
+                title={ticket.expected_s ? `Esperado: ${formatDuracion(ticket.expected_s)}` : undefined}
+              >
+                {formatDuracion(segundos)}
+              </span>
+              <button
+                style={col.btnTicket}
+                disabled={accionando}
+                onClick={() => onTicket(item, pausado ? 'resume' : 'pause')}
+                title={pausado ? 'Reanudar' : 'Pausar'}
+              >
+                {accionando ? '…' : pausado ? '▶ Seguir' : 'Pausa'}
+              </button>
+            </span>
+          )
+        )}
       </td>
       <td style={{ ...col.td, textAlign: 'center' }} onClick={e => { e.stopPropagation(); !confirmado && onVerReceta(item) }}>
         <span style={{ fontSize: '14px', cursor: confirmado ? 'default' : 'pointer' }}>
@@ -483,6 +624,7 @@ const col = {
   td:       { color: '#c8d8e8', padding: '8px 10px', borderBottom: '1px solid #1a2a3a' },
   input:    { background: '#0f1c2e', border: '1px solid #243550', borderRadius: '5px', color: 'white', fontSize: '14px', fontWeight: '600', padding: '4px 6px', width: '80px', textAlign: 'center', outline: 'none' },
   btnCheck: { border: '1px solid', borderRadius: '6px', fontSize: '14px', fontWeight: '700', padding: '4px 10px', width: '40px' },
+  btnTicket:{ background: '#162236', border: '1px solid #243550', borderRadius: '6px', color: '#7a9bb8', fontSize: '12px', fontWeight: '700', padding: '3px 8px', cursor: 'pointer' },
 }
 
 // ─── Estilos página ───────────────────────────────────────────────────────────
@@ -497,6 +639,7 @@ const s = {
   btnStock:  { background: 'none', border: '1px solid #243550', borderRadius: '5px', color: '#7dd3fc', fontSize: '12px', padding: '4px 10px', cursor: 'pointer' },
   main:      { flex: 1, padding: '1.5rem 2rem', maxWidth: '1200px', width: '100%', margin: '0 auto' },
   cols:      { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' },
+  bannerDemora: { background: '#2a1414', border: '1px solid #ef4444', borderRadius: '8px', color: '#fca5a5', fontSize: '13px', fontWeight: '600', padding: '10px 16px', marginBottom: '16px' },
 
   insumosPanel:    { background: '#162236', border: '1px solid #F4C430', borderRadius: '10px', overflow: 'hidden', marginBottom: '20px' },
   insumosTitulo:   { display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', background: '#0f1c2e', borderBottom: '1px solid #243550' },
