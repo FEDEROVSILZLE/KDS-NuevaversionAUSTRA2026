@@ -46,8 +46,9 @@ export async function GET() {
       ],
     })
 
-    // Separar en emp (rellenos) y fracc (fraccionados)
-    const EMP_SUBCONDITIONS = ['horno', 'freir', 'semillas', 'hojaldre', 'copetin']
+    // Separar en emp (rellenos) y fracc (fraccionados):
+    // todo lo que tenga "EMPANADA" en el nombre va a la izquierda
+    const esRellenoEmpanada = (nombre) => (nombre || '').toUpperCase().includes('EMPANADA')
 
     const emp  = []
     const fracc = []
@@ -67,7 +68,7 @@ export async function GET() {
         order_number:       item.orders.order_number,
       }
 
-      if (EMP_SUBCONDITIONS.includes(subCond)) {
+      if (esRellenoEmpanada(item.products.official_name)) {
         emp.push(mapped)
       } else {
         fracc.push(mapped)
